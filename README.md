@@ -40,5 +40,17 @@ You can also define the desired release by declaring `TMUX_RELEASE=<release>`, e
 - [ ] Option to remove current installation of **tmux**.
 - [ ] Option to define installation directory.
 - [ ] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
+    ```bash
+    list_nerd_fonts() {
+        :
+    }
+    get_nerd_font() {
+        local font_name="${1}.tar.xz"
+        local api_url="https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest"
+        jq -r ".assets | .[] | select(.name == \"$font_name\") |\
+            .browser_download_url" <(curl -sL "$api_url")
+    }
+    get_nerd_font 'Monofur'
+    ```
 - [ ] Option to install a given `.tmux.conf`.
 - [ ] Add route for compiling from source.
