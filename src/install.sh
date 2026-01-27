@@ -93,7 +93,7 @@ parse_opts() {
         case "$1" in
             -l|--ls)
                 if ! which curl &>/dev/null ; then
-                    echo -e "\e[31mError: Missing required package 'curl'"
+                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
                     exit 1
                 fi
                 tmux_list_releases
