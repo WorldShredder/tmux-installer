@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
 # github.com/tmux/tmux
-# github.com/worldshredder
-# https://gist.github.com/WorldShredder/7e85695196e03c80000bfb79d8195d93
+# github.com/worldshredder/tmux-installer
 
 ######################################################################
 ##                                                                  ##
@@ -17,16 +16,17 @@
 ##      bash <(curl -sL GIST_URL/raw) -r 3.6a                       ##
 ##      TMUX_RELEASE='3.6a' bash <(curl -sL GIST_URL/raw)           ##
 ##                                                                  ##
-## - See -h|--help for for info                                     ##
+## - See -h|--help for more options                                 ##
 ##                                                                  ##
 ######################################################################
 
 set -Eeo pipefail
 
 __VERSION__='0.1.0'
+declare -a CLEANUP_TARGETS
 
 GITHUB_API_URL="https://api.github.com/repos"
-NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases"
+NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
 PREFER_OTF='false'
 INSTALL_TMUX='true'
@@ -45,13 +45,6 @@ cleanup() {
             rm -rf "$target"
         fi
     done
-}
-
-mktemp_dir() {
-    local temp_dir
-    temp_dir="$(mktemp -d 2>/dev/null)"
-    CLEANUP_TARGETS+=("$temp_dir")
-    echo "$temp_dir"
 }
 
 print_help() {
@@ -152,25 +145,45 @@ install_dependencies() {
     fi
 }
 
+nf_get_fonts() {
+    local query='.assets | .[] | {name: .name, location: .browser_download_url}'
+    jq "$query" <(curl -sL "$NF_API_URL") 2>/dev/null
+}
+
 nf_list_fonts() {
-    local query='.assets | .[] | .name | sub("\\.tar\\.xz$";"")'
-    jq -r "$query" <(curl -sL "$NF_API_URL") 2>/dev/null
+    local font_data
+    font_data="$(nf_get_fonts)"
+    local query='.name | select(. | test("\\.tar\\.xz$")) | sub("\\.tar\\.xz$";"")'
+    jq -r "$query" <<< "$font_data"
 }
 
 nf_get_location() {
-    local font="${1,,}"
-    local query=".assets | .[] | select(.name | ascii_downcase | \
-        test(\"^${font}\\\.tar\\\.xz\$\")) | .browser_download_url"
+    local font font_data
+    font_name="${1,,}"
+    font_data="${2:-$(nf_get_fonts)}"
+
+    local query="select(.name | ascii_downcase | \
+        test(\"^${font_name}\\\.tar\\\.xz\$\")) | .locations"
+
+    # local query=".assets | .[] | select(.name | ascii_downcase | \
+    #     test(\"^${font}\\\.tar\\\.xz\$\")) | .browser_download_url"
     jq -r "$query" <(curl -sL "$NF_API_URL") 2>/dev/null |\
         grep -oE '^https://github\.com/.+'
 }
 
 nf_install_font() {
-    local font_name="$1"
+    local font_name font_data
+    font_name="$1"
+    font_data="${2:-$(nf_get_fonts)}"
 
-    local location build_dir font_archive font_data
-    location="$(nf_get_location "$font_name")"
-    build_dir="$(mktemp_dir)"
+    local location
+    location="$(nf_get_location "$font_name" "$font_data")"
+
+    local build_dir
+    build_dir="$(mktemp -d 2>/dev/null)"
+    CLEANUP_TARGETS+=("$build_dir")
+
+    local font_archive font_data
     font_archive="${build_dir}/${font_name}.tar.xz"
     font_data="${build_dir}/font_data"
     mkdir "$font_data"
@@ -180,10 +193,10 @@ nf_install_font() {
 
     echo -e "\e[34mInfo: Installing font '$font_name'\e[0m"
     if [ "$PREFER_OTF" == 'true' ] \
-    && tar -xJf "$font_archive" -C "$font_data" --wildcard '*.otf' ; then
+    && tar -xJf "$font_archive" -C "$font_data" --wildcards '*.otf' ; then
         sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
             sudo cp "$font_data"/*.otf "/usr/share/fonts/opentype/$font_name/"
-    elif tar -xJf "$font_archive" -C "$font_data" --wildcard '*.ttf' ; then
+    elif tar -xJf "$font_archive" -C "$font_data" --wildcards '*.ttf' ; then
         sudo mkdir -p "/usr/share/fonts/truetype/$font_name" &&\
             sudo cp "$font_data"/*.ttf "/usr/share/fonts/truetype/$font_name/"
     fi
@@ -207,7 +220,9 @@ tmux_get_release() {
 }
 
 tmux_list_releases() {
-    local release_data="${1:-$(tmux_get_release)}"
+    local release_data
+    release_data="${1:-$(tmux_get_release)}"
+
     local ln_format='echo -ne "\e[35m${0}\t\e[36m$(date -d "$1" "+%F")\e[0m\n"'
     local query='[.[] | "\(.tag_name)\t\(.assets[0].updated_at)"] | reverse | .[]'
     jq -r "$query" <<< "$release_data" 2>/dev/null |\
@@ -226,9 +241,12 @@ tmux_install() {
     [ -z "$TMUX_RELEASE" ] &&\
         TMUX_RELEASE='latest'
 
-    local build_dir location
-    build_dir="$(mktemp_dir)"
+    local location
     location="$(tmux_get_location "$TMUX_RELEASE")"
+
+    local build_dir
+    build_dir="$(mktemp -d 2>/dev/null)"
+    CLEANUP_TARGETS+=("$build_dir")
 
     echo -e "\e[34mInfo: Installing tmux version: $TMUX_RELEASE\e[0m"
     curl -sL "$location" | tar -xz -C "$build_dir"
@@ -244,8 +262,6 @@ installer() {
     parse_opts "$@" ||\
         return 1
 
-    declare -a CLEANUP_TARGETS
-    
     install_dependencies
     [ "$INSTALL_TMUX" == 'true' ] &&\
         tmux_install
