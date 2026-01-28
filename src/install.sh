@@ -172,39 +172,46 @@ nf_get_location() {
 }
 
 nf_install_font() {
-    local font_name font_data
+    local font_name font_data location
     font_name="$1"
     font_data="${2:-$(nf_get_fonts)}"
-
-    local location
     location="$(nf_get_location "$font_name" "$font_data")"
 
     local build_dir
     build_dir="$(mktemp -d 2>/dev/null)"
     CLEANUP_TARGETS+=("$build_dir")
 
-    local font_archive font_data
+    local font_archive data_dir
     font_archive="${build_dir}/${font_name}.tar.xz"
-    font_data="${build_dir}/font_data"
-    mkdir "$font_data"
+    data_dir="${build_dir}/font_data"
+    mkdir "$data_dir"
 
     echo -e "\e[34mInfo: Fetching font '$font_name'\e[0m"
     curl -sL "$location" > "$font_archive"
 
     echo -e "\e[34mInfo: Installing font '$font_name'\e[0m"
     if [ "$PREFER_OTF" == 'true' ] \
-    && tar -xJf "$font_archive" -C "$font_data" --wildcards '*.otf' ; then
+    && tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.otf' 2>/dev/null ; then
         sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
-            sudo cp "$font_data"/*.otf "/usr/share/fonts/opentype/$font_name/"
-    elif tar -xJf "$font_archive" -C "$font_data" --wildcards '*.ttf' ; then
+            sudo cp "$data_dir"/*.otf "/usr/share/fonts/opentype/$font_name/"
+    elif tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.ttf' 2>/dev/null ; then
         sudo mkdir -p "/usr/share/fonts/truetype/$font_name" &&\
-            sudo cp "$font_data"/*.ttf "/usr/share/fonts/truetype/$font_name/"
+            sudo cp "$data_dir"/*.ttf "/usr/share/fonts/truetype/$font_name/"
     fi
 
     if [ "$?" != '0' ] ; then
         echo -e "\e[31mError: Failed to install font '$font_name'\e[0m"
         return 1
     fi
+}
+
+nf_install_fonts() {
+    local fonts fonts_data font_name
+    fonts="$1"
+    font_data="${2:-$(nf_get_fonts)}"
+    while read -rd ',' font_name ; do
+        nf_install_font "$font_name" "$font_data"
+    done <<< "${fonts},"
 }
 
 tmux_get_release() {
@@ -266,12 +273,8 @@ installer() {
     [ "$INSTALL_TMUX" == 'true' ] &&\
         tmux_install
 
-    local font
-    if [ -n "$INSTALL_FONTS" ] ; then
-        while read -rd ',' font ; do
-            nf_install_font "$font"
-        done <<< "${INSTALL_FONTS},"
-    fi
+    [ -n "$INSTALL_FONTS" ] &&\
+        nf_install_fonts "$INSTALL_FONTS"
 
     return 0
 }
