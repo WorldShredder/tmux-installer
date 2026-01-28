@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.1.0'
+__VERSION__='0.2.1'
 declare -a CLEANUP_TARGETS
 
 GITHUB_API_URL="https://api.github.com/repos"
