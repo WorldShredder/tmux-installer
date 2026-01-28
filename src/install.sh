@@ -163,7 +163,7 @@ nf_get_location() {
     font_data="${2:-$(nf_get_fonts)}"
 
     local query="select(.name | ascii_downcase | \
-        test(\"^${font_name}\\\.tar\\\.xz\$\")) | .locations"
+        test(\"^${font_name}\\\.tar\\\.xz\$\")) | .location"
 
     # local query=".assets | .[] | select(.name | ascii_downcase | \
     #     test(\"^${font}\\\.tar\\\.xz\$\")) | .browser_download_url"
