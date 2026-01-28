@@ -24,16 +24,26 @@ An unofficial installer for the official [tmux](https://github.com/tmux/tmux) pr
 
 ## Options
 
-| Option | Description |
-| ------ | ----------- |
-| -l \| --ls | List all available versions and release dates.
-| -r \| --release RELEASE | Specificy a **tmux** release to install.
-| -v \| --version | Print installer version.
-| -h \| --help | Print help message.
+```
+Usage: installer [OPTIONS...]
+
+Options:
+  -r, --release       Specificy a Tmux release to install.
+  -f, --fonts         A comma separated list of Nerd Fonts to install.
+  -o, --otf           Install opentype fonts if available.
+  -F, --fonts-only    Install fonts only.
+  -l, --ls            List available versions and release dates.
+  -L, --ls-fonts      List available Nerd Fonts.
+  -v, --version       Print installer version.
+  -h, --help          Print this help message.
+```
 
 ### Environment
 
-You can also define the desired release by declaring `TMUX_RELEASE=<release>`, e.g., `TMUX_RELEASE='3.6' bash src/installer.sh`.
+| Variable | Description
+| -------- | -----------
+| TMUX\_RELEASE=<release> | Specify a **tmux** release to install; same as `-r`.
+| INSTALL\_FONTS | A comma separated list of [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) to install; same as `-f`.
 
 ## Todo
 

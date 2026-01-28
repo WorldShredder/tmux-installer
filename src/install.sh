@@ -24,23 +24,26 @@
 set -Eeo pipefail
 
 __VERSION__='0.1.0'
-declare -a CLEANUP_TARGETS
 
 GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
+PREFER_OTF='false'
+INSTALL_TMUX='true'
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
-PREFER_OTF='false'
 
 cleanup() {
     trap - ERR INT TERM HUP QUIT
     trap 'exit 1' ERR
     trap 'exit 0' INT TERM HUP QUIT
+    echo -e "Debug: Cleaning up: ${CLEANUP_TARGETS[*]}"
     local target
     for target in "${CLEANUP_TARGETS[@]}" ; do
-        [ -d "$target" ] &&\
+        if [ -d "$target" ] ; then
+            echo -e "Debug: Removing '$target'"
             rm -rf "$target"
+        fi
     done
 }
 
@@ -56,8 +59,12 @@ cat << EOF
 Usage: $0 [OPTIONS...]
 
 Options:
-  -l, --ls            List all available versions and release dates.
   -r, --release       Specificy a Tmux release to download and install.
+  -f, --fonts         A comma separated list of Nerd Fonts to install.
+  -o, --otf           Install opentype fonts if available.
+  -F, --fonts-only    Install fonts only.
+  -l, --ls            List available versions and release dates.
+  -L, --ls-fonts      List available Nerd Fonts.
   -v, --version       Print installer version.
   -h, --help          Print this help message.
 
@@ -68,8 +75,8 @@ EOF
 parse_opts() {
     set -Cu
     local short_opts long_opts params
-    short_opts='lr:vh'
-    long_opts='ls,tmux-release:,version,help'
+    short_opts='r:f:oFlLvh'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,ls,ls-fonts,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -77,16 +84,32 @@ parse_opts() {
     
     while true ; do
         case "$1" in
-            -l|--ls)
-                if ! which curl &>/dev/null ; then
-                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
-                    exit 1
-                fi
-                tmux_list_releases
-                exit 0 ;;
             -r|--release)
                 TMUX_RELEASE="$2"
                 shift 2 ;;
+            -f|--fonts)
+                INSTALL_FONTS="$2"
+                shift 2 ;;
+            -o|--otf)
+                PREFER_OTF='true'
+                shift ;;
+            -F|--fonts-only)
+                INSTALL_TMUX='false'
+                shift ;;
+            -l|--ls)
+                if ! which curl &>/dev/null ; then
+                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
+                    return 1
+                fi
+                tmux_list_releases
+                exit 0 ;;
+            -L|--ls-fonts)
+                if ! which curl &>/dev/null ; then
+                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
+                    return 1
+                fi
+                nf_list_fonts
+                exit 0 ;;
             -v|--version)
                 echo "Tmux Installer $__VERSION__"
                 exit 0 ;;
@@ -98,13 +121,14 @@ parse_opts() {
                 break ;;
             *)
                 echo -e "\e[31mInvalid option '$1'\e[0m"
-                exit 1;;
+                return 1 ;;
         esac
     done
 }
 
 install_dependencies() {
-    declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison' 'libevent-dev' 'libncurses-dev' 'make' 'gcc')
+    declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison'
+                              'libevent-dev' 'libncurses-dev' 'make' 'gcc')
     declare -a missing_pkgs
     for pkg in "${REQUIRED_PKGS[@]}" ; do
         ! dpkg -s "$pkg" &>/dev/null && ! which "$pkg" &>/dev/null &&\
@@ -120,7 +144,7 @@ install_dependencies() {
                     sudo apt install -y ${missing_pkgs[*]} --no-install-recommends
                     break ;;
                 [nN])
-                    exit 1 ;;
+                    return 1 ;;
                 *)
                     echo -e "\e[31mError: Invalid response '$REPLY'\e[0m" ;;
             esac
@@ -217,10 +241,28 @@ tmux_install() {
 }
 
 installer() {
-    :
+    parse_opts "$@" ||\
+        return 1
+
+    declare -a CLEANUP_TARGETS
+    
+    install_dependencies
+    [ "$INSTALL_TMUX" == 'true' ] &&\
+        tmux_install
+
+    local font
+    if [ -n "$INSTALL_FONTS" ] ; then
+        while read -rd ',' font ; do
+            nf_install_font "$font"
+        done <<< "${INSTALL_FONTS},"
+    fi
+
+    return 0
 }
 
-trap "cleanup '$TMUX_BUILD_DIR'; exit 1" ERR
-trap "cleanup '$TMUX_BUILD_DIR'; exit 0" INT TERM HUP QUIT
+trap 'cleanup ; exit 1' ERR
+trap 'cleanup ; exit 0' INT TERM HUP QUIT
+
+installer "$@"
 
 kill -TERM "$BASHPID"
