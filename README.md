@@ -41,14 +41,15 @@ You can also define the desired release by declaring `TMUX_RELEASE=<release>`, e
 - [ ] Option to define installation directory.
 - [ ] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
     ```bash
+    NF_API_URL="https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest"
     list_nerd_fonts() {
-        :
+        jq -r '.assets | .[] | .name | sub("(\\.zip|\\.tar\\.xz)$"; "")' \
+            <(curl "NF_API_URL")
     }
     get_nerd_font() {
         local font_name="${1}.tar.xz"
-        local api_url="https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest"
         jq -r ".assets | .[] | select(.name == \"$font_name\") |\
-            .browser_download_url" <(curl -sL "$api_url")
+            .browser_download_url" <(curl -sL "$NF_API_URL")
     }
     get_nerd_font 'Monofur'
     ```

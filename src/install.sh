@@ -24,45 +24,31 @@
 set -Eeo pipefail
 
 __VERSION__='0.1.0'
-GITHUB_API_URL="https://api.github.com/repos/tmux/tmux/releases"
-TMUX_REPO_URL="https://github.com/tmux/tmux"
+declare -a CLEANUP_TARGETS
+
+GITHUB_API_URL="https://api.github.com/repos"
+NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases"
+TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
+NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
-
-tmux_get_release() {
-    local release="$1"
-    if [ -z "$release" ] || [ "$release" == 'all' ] ; then
-        curl -sSL "$GITHUB_API_URL"
-    elif [ "$release" == 'latest' ] ; then
-        curl -sSL "${GITHUB_API_URL}/latest"
-    else
-        curl -sSL "${GITHUB_API_URL}" | jq ".[] |\
-            select(.tag_name == \"${release}\")"
-    fi
-}
-
-tmux_list_releases() {
-    local release_data="${1:-$(tmux_get_release)}"
-    local ln_format='echo -ne "\e[35m${0}\t\e[36m$(date -d "$1" "+%F")\e[0m\n"'
-    jq -r "[.[] | \"\(.tag_name)\t\(.assets[0].updated_at)\"] |\
-        reverse | .[]" <<< "$release_data" |\
-        xargs -n2 bash -c "$ln_format"
-}
-
-tmux_get_location() {
-    local release="$1"
-    local release_data="${2:-$(tmux_get_release "${1:-latest}")}"
-    jq -r ". | .assets[0].browser_download_url" <<< "$release_data"
-}
+PREFER_OTF='false'
 
 cleanup() {
     trap - ERR INT TERM HUP QUIT
     trap 'exit 1' ERR
     trap 'exit 0' INT TERM HUP QUIT
-    while true ; do
-        [ ! -d "$1" ] && break
-        rm -rf "$1"
-        shift
+    local target
+    for target in "${CLEANUP_TARGETS[@]}" ; do
+        [ -d "$target" ] &&\
+            rm -rf "$target"
     done
+}
+
+mktemp_dir() {
+    local temp_dir
+    temp_dir="$(mktemp -d 2>/dev/null)"
+    CLEANUP_TARGETS+=("$temp_dir")
+    echo "$temp_dir"
 }
 
 print_help() {
@@ -116,50 +102,125 @@ parse_opts() {
         esac
     done
 }
-parse_opts "$@"
 
-# Dependencies
-declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison' 'libevent-dev' 'libncurses-dev' 'make' 'gcc')
-declare -a missing_pkgs
-for pkg in "${REQUIRED_PKGS[@]}" ; do
-    ! dpkg -s "$pkg" &>/dev/null && ! which "$pkg" &>/dev/null &&\
-        missing_pkgs+=("$pkg")
-done
-if [ "${#missing_pkgs[@]}" -gt 0 ] ; then
-    echo -e "\e[33mWarn: Missing required packages: ${missing_pkgs[*]}\e[0m"
-    while read -n1 -p 'Install missing packages (Y/n) ' ; do
-        echo
-        case "$REPLY" in
-            [yY]|'')
-                sudo apt update
-                sudo apt install -y ${missing_pkgs[*]} --no-install-recommends
-                break ;;
-            [nN])
-                exit 1 ;;
-            *)
-                echo -e "\e[31mError: Invalid response '$REPLY'\e[0m" ;;
-        esac
+install_dependencies() {
+    declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison' 'libevent-dev' 'libncurses-dev' 'make' 'gcc')
+    declare -a missing_pkgs
+    for pkg in "${REQUIRED_PKGS[@]}" ; do
+        ! dpkg -s "$pkg" &>/dev/null && ! which "$pkg" &>/dev/null &&\
+            missing_pkgs+=("$pkg")
     done
-fi
+    if [ "${#missing_pkgs[@]}" -gt 0 ] ; then
+        echo -e "\e[33mWarn: Missing required packages: ${missing_pkgs[*]}\e[0m"
+        while read -n1 -p 'Install missing packages (Y/n) ' ; do
+            echo
+            case "$REPLY" in
+                [yY]|'')
+                    sudo apt update
+                    sudo apt install -y ${missing_pkgs[*]} --no-install-recommends
+                    break ;;
+                [nN])
+                    exit 1 ;;
+                *)
+                    echo -e "\e[31mError: Invalid response '$REPLY'\e[0m" ;;
+            esac
+        done
+    fi
+}
 
-# Get tmux
-[ -z "$TMUX_RELEASE" ] &&\
-    TMUX_RELEASE='latest'
+nf_list_fonts() {
+    local query='.assets | .[] | .name | sub("\\.tar\\.xz$";"")'
+    jq -r "$query" <(curl -sL "$NF_API_URL") 2>/dev/null
+}
 
-TMUX_BUILD_DIR="$(mktemp -d)"
+nf_get_location() {
+    local font="${1,,}"
+    local query=".assets | .[] | select(.name | ascii_downcase | \
+        test(\"^${font}\\\.tar\\\.xz\$\")) | .browser_download_url"
+    jq -r "$query" <(curl -sL "$NF_API_URL") 2>/dev/null |\
+        grep -oE '^https://github\.com/.+'
+}
+
+nf_install_font() {
+    local font_name="$1"
+
+    local location build_dir font_archive font_data
+    location="$(nf_get_location "$font_name")"
+    build_dir="$(mktemp_dir)"
+    font_archive="${build_dir}/${font_name}.tar.xz"
+    font_data="${build_dir}/font_data"
+    mkdir "$font_data"
+
+    echo -e "\e[34mInfo: Fetching font '$font_name'\e[0m"
+    curl -sL "$location" > "$font_archive"
+
+    echo -e "\e[34mInfo: Installing font '$font_name'\e[0m"
+    if [ "$PREFER_OTF" == 'true' ] \
+    && tar -xJf "$font_archive" -C "$font_data" --wildcard '*.otf' ; then
+        sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
+            sudo cp "$font_data"/*.otf "/usr/share/fonts/opentype/$font_name/"
+    elif tar -xJf "$font_archive" -C "$font_data" --wildcard '*.ttf' ; then
+        sudo mkdir -p "/usr/share/fonts/truetype/$font_name" &&\
+            sudo cp "$font_data"/*.ttf "/usr/share/fonts/truetype/$font_name/"
+    fi
+
+    if [ "$?" != '0' ] ; then
+        echo -e "\e[31mError: Failed to install font '$font_name'\e[0m"
+        return 1
+    fi
+}
+
+tmux_get_release() {
+    local release="$1"
+    if [ -z "$release" ] || [ "$release" == 'all' ] ; then
+        curl -sL "$TMUX_API_URL"
+    elif [ "$release" == 'latest' ] ; then
+        curl -sL "${TMUX_API_URL}/latest"
+    else
+        local query=".[] | select(.tag_name == \"${release}\")"
+        curl -sL "${TMUX_API_URL}" | jq "$query" 2>/dev/null
+    fi
+}
+
+tmux_list_releases() {
+    local release_data="${1:-$(tmux_get_release)}"
+    local ln_format='echo -ne "\e[35m${0}\t\e[36m$(date -d "$1" "+%F")\e[0m\n"'
+    local query='[.[] | "\(.tag_name)\t\(.assets[0].updated_at)"] | reverse | .[]'
+    jq -r "$query" <<< "$release_data" 2>/dev/null |\
+        xargs -n2 bash -c "$ln_format" 2>/dev/null
+}
+
+tmux_get_location() {
+    local release="$1"
+    local release_data="${2:-$(tmux_get_release "${1:-latest}")}"
+    local query='. | .assets[0].browser_download_url'
+    jq -r "$query" <<< "$release_data" 2>/dev/null |\
+        grep -oE '^https://github\.com/.+'
+}
+
+tmux_install() {
+    [ -z "$TMUX_RELEASE" ] &&\
+        TMUX_RELEASE='latest'
+
+    local build_dir location
+    build_dir="$(mktemp_dir)"
+    location="$(tmux_get_location "$TMUX_RELEASE")"
+
+    echo -e "\e[34mInfo: Installing tmux version: $TMUX_RELEASE\e[0m"
+    curl -sL "$location" | tar -xz -C "$build_dir"
+
+    cd "$build_dir"/tmux-*
+    ./configure && make
+    sudo make install
+
+    echo -e "\e[32mOK: \e[35m$(tmux -V) \e[32minstalled successfully!\e[0m"
+}
+
+installer() {
+    :
+}
+
 trap "cleanup '$TMUX_BUILD_DIR'; exit 1" ERR
 trap "cleanup '$TMUX_BUILD_DIR'; exit 0" INT TERM HUP QUIT
-
-echo -e "\e[34mInfo: Installing tmux version: $TMUX_RELEASE\e[0m"
-curl -sSL "$(tmux_get_location "$TMUX_RELEASE" |\
-    grep -oE '^https://github\.com/.+')" | tar -xz -C "$TMUX_BUILD_DIR"
-
-# Install tmux
-cd "$TMUX_BUILD_DIR"/tmux-*
-./configure && make
-sudo make install
-
-echo -e "\e[32mOK: Installation complete!\e[0m"
-echo -e "\n  \e[35mVersion: $(tmux -V)\e[0m\n"
 
 kill -TERM "$BASHPID"
