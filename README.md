@@ -25,10 +25,10 @@ An unofficial installer for the official [tmux](https://github.com/tmux/tmux) pr
 ## Options
 
 ```
-Usage: installer [OPTIONS...]
+Usage: src/install.sh [OPTIONS...]
 
 Options:
-  -r, --release       Specificy a Tmux release to install.
+  -r, --release       Specificy a Tmux release to download and install.
   -f, --fonts         A comma separated list of Nerd Fonts to install.
   -o, --otf           Install opentype fonts if available.
   -F, --fonts-only    Install fonts only.
@@ -36,32 +36,50 @@ Options:
   -L, --ls-fonts      List available Nerd Fonts.
   -v, --version       Print installer version.
   -h, --help          Print this help message.
+
+Environment:
+  TMUX_RELEASE        Same as -r|--release
+  INSTALL_FONTS       Same as -f|--fonts
+  INSTALL_TMUX        Expects 'true' or 'false'; set by -F
 ```
 
-### Environment
+## Examples
 
-| Variable | Description
-| -------- | -----------
-| TMUX\_RELEASE=<release> | Specify a **tmux** release to install; same as `-r`.
-| INSTALL\_FONTS | A comma separated list of [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) to install; same as `-f`.
+- #### Install latest Tmux release
+
+    ```bash
+    bash src/install.sh
+    ```
+
+- #### Install Tmux release `3.6` with `JetbrainsMono` font
+
+    ```bash
+    bash src/install.sh -r 3.6 -f jetbrainsmono
+    ```
+
+- #### Install fonts only (no Tmux)
+
+    ```bash
+    bash src/install.sh -Ff arimo,noto,tinos
+    ```
+
+- #### List available Tmux releases
+
+    ```bash
+    bash src/install.sh -l
+    ```
+
+- #### List available [NerdFonts](https://github.com/ryanoasis/nerd-fonts)
+
+    ```bash
+    bash src/install.sh -L
+    ```
 
 ## Todo
 
 - [ ] Option to remove current installation of **tmux**.
 - [ ] Option to define installation directory.
-- [ ] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
-    ```bash
-    NF_API_URL="https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest"
-    list_nerd_fonts() {
-        jq -r '.assets | .[] | .name | sub("(\\.zip|\\.tar\\.xz)$"; "")' \
-            <(curl "NF_API_URL")
-    }
-    get_nerd_font() {
-        local font_name="${1}.tar.xz"
-        jq -r ".assets | .[] | select(.name == \"$font_name\") |\
-            .browser_download_url" <(curl -sL "$NF_API_URL")
-    }
-    get_nerd_font 'Monofur'
-    ```
+- [x] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
 - [ ] Option to install a given `.tmux.conf`.
-- [ ] Add route for compiling from source.
+- [ ] Add route to build from version control.
+- [ ] Implement proper logging.

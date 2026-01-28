@@ -7,14 +7,9 @@
 ##                                                                  ##
 ## - Downloads and installs the latest version of Tmux              ##
 ##                                                                  ##
+## - Install one or more NerdFonts from 'ryanoasis/nerd-fonts'      ##
+##                                                                  ##
 ## - Handles necessary compiler dependencies                        ##
-##                                                                  ##
-## - Install with: bash <(curl -sL GIST_URL/raw)                    ##
-##                                                                  ##
-## - Tmux release can be specified with -r or TMUX_RELEASE          ##
-##                                                                  ##
-##      bash <(curl -sL GIST_URL/raw) -r 3.6a                       ##
-##      TMUX_RELEASE='3.6a' bash <(curl -sL GIST_URL/raw)           ##
 ##                                                                  ##
 ## - See -h|--help for more options                                 ##
 ##                                                                  ##
@@ -29,7 +24,7 @@ GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
 PREFER_OTF='false'
-INSTALL_TMUX='true'
+INSTALL_TMUX="${INSTALL_TMUX:-true}"
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
 
@@ -37,11 +32,9 @@ cleanup() {
     trap - ERR INT TERM HUP QUIT
     trap 'exit 1' ERR
     trap 'exit 0' INT TERM HUP QUIT
-    echo -e "Debug: Cleaning up: ${CLEANUP_TARGETS[*]}"
     local target
     for target in "${CLEANUP_TARGETS[@]}" ; do
         if [ -d "$target" ] ; then
-            echo -e "Debug: Removing '$target'"
             rm -rf "$target"
         fi
     done
@@ -50,6 +43,8 @@ cleanup() {
 print_help() {
 cat << EOF
 Usage: $0 [OPTIONS...]
+
+Install the latest version of Tmux and specified NerdFonts.
 
 Options:
   -r, --release       Specificy a Tmux release to download and install.
@@ -60,6 +55,21 @@ Options:
   -L, --ls-fonts      List available Nerd Fonts.
   -v, --version       Print installer version.
   -h, --help          Print this help message.
+
+Environment:
+  TMUX_RELEASE        Same as -r|--release
+  INSTALL_FONTS       Same as -f|--fonts
+  INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+
+Examples:
+  # Install latest verion
+    ./$0
+  # Install version '3.6'
+    ./$0 -r 3.6
+  # Install latest version with three fonts
+    ./$0 -f jetbrainsmono,meslo,hermit
+  # Install font 'monofur' only
+    ./$0 -Ff monofur
 
 https://github.com/WorldShredder
 EOF
@@ -165,16 +175,19 @@ nf_get_location() {
     local query="select(.name | ascii_downcase | \
         test(\"^${font_name}\\\.tar\\\.xz\$\")) | .location"
 
-    # local query=".assets | .[] | select(.name | ascii_downcase | \
-    #     test(\"^${font}\\\.tar\\\.xz\$\")) | .browser_download_url"
-    jq -r "$query" <(curl -sL "$NF_API_URL") 2>/dev/null |\
-        grep -oE '^https://github\.com/.+'
+    jq -r "$query" <<< "$font_data" 2>/dev/null |\
+        grep -oE '^https://github\.com/ryanoasis/nerd-fonts/.+'
 }
 
 nf_install_font() {
-    local font_name font_data location
-    font_name="$1"
-    font_data="${2:-$(nf_get_fonts)}"
+    local font_name="$1"
+    local font_data="$2"
+    if [ -z "$font_data" ] ; then
+        echo -e "\e[34mInfo: Fetching data from NerdFonts\e[0m"
+        font_data="$(nf_get_fonts)"
+    fi
+
+    local location
     location="$(nf_get_location "$font_name" "$font_data")"
 
     local build_dir
@@ -186,7 +199,7 @@ nf_install_font() {
     data_dir="${build_dir}/font_data"
     mkdir "$data_dir"
 
-    echo -e "\e[34mInfo: Fetching font '$font_name'\e[0m"
+    echo -e "\e[34mInfo: Downloading font '$font_name'\e[0m"
     curl -sL "$location" > "$font_archive"
 
     echo -e "\e[34mInfo: Installing font '$font_name'\e[0m"
@@ -206,9 +219,13 @@ nf_install_font() {
 }
 
 nf_install_fonts() {
-    local fonts fonts_data font_name
-    fonts="$1"
-    font_data="${2:-$(nf_get_fonts)}"
+    local fonts="$1"
+    local font_data="$2"
+    if [ -z "$font_data" ] ; then
+        echo -e "\e[34mInfo: Fetching data from NerdFonts\e[0m"
+        font_data="$(nf_get_fonts)"
+    fi
+    local font_name
     while read -rd ',' font_name ; do
         nf_install_font "$font_name" "$font_data"
     done <<< "${fonts},"
@@ -262,7 +279,7 @@ tmux_install() {
     ./configure && make
     sudo make install
 
-    echo -e "\e[32mOK: \e[35m$(tmux -V) \e[32minstalled successfully!\e[0m"
+    echo -e "\e[34mInfo: \e[35mtmux -V \e[34m= \e[35m$(tmux -V)\e[0m"
 }
 
 installer() {
@@ -276,10 +293,11 @@ installer() {
     [ -n "$INSTALL_FONTS" ] &&\
         nf_install_fonts "$INSTALL_FONTS"
 
+    echo -e '\e[32mOK: Installation complete!\[0m'
     return 0
 }
 
-trap 'cleanup ; exit 1' ERR
+trap 'echo -e "\e[31mFatal: Something went wrong\e[0m" ; cleanup ; exit 1' ERR
 trap 'cleanup ; exit 0' INT TERM HUP QUIT
 
 installer "$@"
