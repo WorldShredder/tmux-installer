@@ -2,7 +2,16 @@
 <h3 align=center>Download → Build → Install or Update</h3>
 <br>
 
-An unofficial installer for the official [tmux](https://github.com/tmux/tmux) project. Use it to install **tmux** on a new system or upgrade an existing install.
+> [!IMPORTANT]
+> - Tested and working on **debian 12**
+> - Requires `dpkg` and `apt` for dependency management (see [todo](#todo))
+> - Try installer in a VM _before_ your main system.
+
+An unofficial installer for the official [tmux](https://github.com/tmux/tmux) project. Use it to install **tmux** on a new system or upgrade an existing install. You may also use it to download and install fonts directly from the latest [NerdFonts](https://github.com/ryanoasis/nerd-fonts) release.
+
+### Rationale
+
+If you setup Linux systems on a regular basis, you'll know having access to convenient tools which expidite the initial system configuration is a priority. I frequently find myself in a new VM for development/testing purposes and, as a programmer, I'm of course always looking for ways to automate the setup process. This installer was _long_ overdue, given I've had to install **tmux** more times than I can count.
 
 ## Usage
 
@@ -82,6 +91,8 @@ Environment:
 - [ ] Option to remove current installation of **tmux**.
 - [ ] Option to define installation directory.
 - [x] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
-- [ ] Option to install a given `.tmux.conf`.
+- [ ] Option to install a given `.tmux.conf` from file and URL.
 - [ ] Add route to build from version control.
 - [ ] Implement proper logging.
+- [ ] Option to install & configure TPM.
+- [ ] Dependency management for `yum`, `dnf`, `pacman`.
