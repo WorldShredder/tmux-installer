@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.2.2'
+__VERSION__='0.2.3'
 __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
 __CLEANUP_TARGETS__=()
@@ -136,7 +136,26 @@ parse_opts() {
     done
 }
 
-install_dependencies() {
+install_depends() {
+    echo -ne '\e[34m[INFO ] Updating apt package lists ... \e[0m'
+    sudo apt update &>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+
+    echo -ne '\e[34m[INFO ] Installing missing packages ... \e[0m'
+    sudo apt install -y ${missing_pkgs[*]} \
+    --no-install-recommends &>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+}
+
+check_depends() {
     declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison'
                               'libevent-dev' 'libncurses-dev' 'make' 'gcc')
     declare -a missing_pkgs
@@ -149,19 +168,15 @@ install_dependencies() {
         while true ; do
             echo -ne "\e[34m[--?--]-> Install missing packages "\
                     "(\e[32mY\e[34m/\e[31mn\e[34m)\e[0m "
-            read -n 1 -p '' ; echo
+            read -n 1 -p ''
             case "$REPLY" in
                 [yY]|'')
-                    echo -e '\e[34m[INFO ] Updating apt package lists...\e[0m'
-                    sudo apt update &>"$__STDERR__"
-                    echo -e '\e[34m[INFO ] Installing missing packages...\e[0m'
-                    sudo apt install -y ${missing_pkgs[*]} \
-                        --no-install-recommends &>"$__STDERR__"
+                    install_depends "${missing_packages[*]}"
                     break ;;
                 [nN])
-                    return 1 ;;
+                    echo ; return 1 ;;
                 *)
-                    echo -e "\e[33m[WARN ] Invalid response '$REPLY'\e[0m" ;;
+                    echo -e "\n\e[33m[WARN ] Invalid response '$REPLY'\e[0m" ;;
             esac
         done
     fi
@@ -195,8 +210,13 @@ nf_install_font() {
     local font_name="$1"
     local font_data="$2"
     if [ -z "$font_data" ] ; then
-        echo -e "\e[34m[INFO ] Fetching data from NerdFonts\e[0m"
-        font_data="$(nf_get_fonts)"
+        echo -ne "\e[34m[INFO ] Fetching NerdFonts metadata ... \e[0m"
+        font_data="$(nf_get_fonts)" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
+        echo -e '\e[32mOK\e[0m'
     fi
 
     local location
@@ -211,31 +231,45 @@ nf_install_font() {
     data_dir="${build_dir}/font_data"
     mkdir "$data_dir"
 
-    echo -e "\e[34m[INFO ] Downloading font '$font_name'\e[0m"
-    curl -sL "$location" > "$font_archive"
+    echo -ne "\e[34m[INFO ] Downloading font \e[35m${font_name} \e[34m ... \e[0m"
+    curl -sL "$location" > "$font_archive" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
 
-    echo -e "\e[34m[INFO ] Installing font '$font_name'\e[0m"
+    echo -ne "\e[34m[INFO ] Installing font \e[35m${font_name} \e[34m... \e[0m"
     if [ "$PREFER_OTF" == 'true' ] \
     && tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.otf' 2>/dev/null ; then
         sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
-            sudo cp "$data_dir"/*.otf "/usr/share/fonts/opentype/$font_name/"
+        sudo cp "$data_dir"/*.otf "/usr/share/fonts/opentype/$font_name/" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
     elif tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.ttf' 2>/dev/null ; then
         sudo mkdir -p "/usr/share/fonts/truetype/$font_name" &&\
-            sudo cp "$data_dir"/*.ttf "/usr/share/fonts/truetype/$font_name/"
+        sudo cp "$data_dir"/*.ttf "/usr/share/fonts/truetype/$font_name/" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m' 
+            return 1
+        }
     fi
-
-    if [ "$?" != '0' ] ; then
-        echo -e "\e[31m[ERROR] Failed to install font '$font_name'\e[0m"
-        return 1
-    fi
+    echo -e '\e[32mOK\e[0m'
 }
 
 nf_install_fonts() {
     local fonts="$1"
     local font_data="$2"
     if [ -z "$font_data" ] ; then
-        echo -e "\e[34m[INFO ] Fetching data from NerdFonts\e[0m"
-        font_data="$(nf_get_fonts)"
+        echo -ne "\e[34m[INFO ] Fetching NerdFonts metadata ... \e[0m"
+        font_data="$(nf_get_fonts)" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
+        echo -e '\e[32mOK\e[0m'
     fi
     local font_name
     while read -rd ',' font_name ; do
@@ -286,7 +320,8 @@ tmux_verify_install() {
 
     echo -e "\e[34m[INFO ] Verifying Tmux install\e[0m"
     echo -ne '  \e[34m- Command `tmux` available ... '
-    type tmux &>/dev/null || {
+    ! type tmux &>/dev/null &&\
+    {
         echo -e '\e[31mFAIL\e[0m'
         return 1
     }
@@ -295,7 +330,8 @@ tmux_verify_install() {
     local current_version
     current_version="$(tmux -V | awk '{print $2}')"
     echo -ne "  \e[34m- Tmux version check ... "
-    [ "$tag_name" != "$current_version" ] && {
+    [ "$tag_name" != "$current_version" ] &&\
+    {
         echo -e "\e[31mFAIL ($tag_name != $current_version)\e[0m"
         return 1
     }
@@ -307,12 +343,20 @@ tmux_install() {
     [ -z "$TMUX_RELEASE" ] || [ "${TMUX_RELEASE,,}" == 'all' ] &&\
         TMUX_RELEASE='latest'
 
+    # Should handle 'process ... OK|FAIL' dynamically with tput
+    # This method will cause minor issues in vebose mode
+
     local release_data="$1"
     if [ -z "$release_data" ] ; then
-        echo -e "\e[34m[INFO ] Fetching Tmux '$TMUX_RELEASE' metadata"
-        release_data="$(tmux_get_release "$TMUX_RELEASE")"
+        echo -ne "\e[34m[INFO ] Fetching Tmux \e[35m${TMUX_RELEASE} \e[34mmetadata ... "
+        release_data="$(tmux_get_release "$TMUX_RELEASE")" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
+        echo -e '\e[32mOK\e[0m'
     fi
-    TMUX_RELEASE="$(tmux_get_tag_name "$release_data")"
+    tag_name="$(tmux_get_tag_name "$release_data")"
 
     local location
     location="$(tmux_get_location '' "$release_data")"
@@ -321,28 +365,39 @@ tmux_install() {
     build_dir="$(mktemp -d 2>/dev/null)"
     __CLEANUP_TARGETS__+=("$build_dir")
 
-    echo -e "\e[34m[INFO ] Downloading Tmux \e[35m$TMUX_RELEASE\e[0m"
-    curl -sL "$location" | tar -xz -C "$build_dir"
+    echo -ne "\e[34m[INFO ] Downloading Tmux \e[35m${tag_name} \e[34m... \e[0m"
+    curl -sL "$location" | tar -xz -C "$build_dir" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
     cd "$build_dir"/tmux-*
 
-    echo -e "\e[34m[INFO ] Building Tmux from source\e[0m"
-    ./configure &>"$__STDERR__"
-    make &>"$__STDERR__"
+    echo -ne "\e[34m[INFO ] Building Tmux from source ... \e[0m"
+    ./configure &>"$__STDERR__" &&\
+    make &>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
 
-    echo -e "\e[34m[INFO ] Installing Tmux\e[0m"
-    sudo make install &>"$__STDERR__"
+    echo -ne "\e[34m[INFO ] Installing Tmux ... \e[0m"
+    sudo make install &>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
 
-
-    tmux_verify_install "$release_data" "$TMUX_RELEASE"
-
-    echo -e "\e[34m[INFO ] Tmux \e[35m${TMUX_RELEASE} \e[34minstall complete\e[0m"
+    tmux_verify_install "$release_data" "$tag_name"
 }
 
 installer() {
-    parse_opts "$@" ||\
-        return 1
+    parse_opts "$@"
+    check_depends
 
-    install_dependencies
     [ "$INSTALL_TMUX" == 'true' ] &&\
         tmux_install
 
