@@ -34,6 +34,7 @@ Options:
   -F, --fonts-only    Install fonts only.
   -l, --ls            List available versions and release dates.
   -L, --ls-fonts      List available Nerd Fonts.
+  -V, --verbose       Enable verbose apt and make/install
   -v, --version       Print installer version.
   -h, --help          Print this help message.
 
@@ -41,6 +42,7 @@ Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
   INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+  VERBOSE             Expects 'true' or 'false'; set by -V
 ```
 
 ## Examples
