@@ -17,8 +17,10 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.2.1'
-declare -a CLEANUP_TARGETS
+__VERSION__='0.2.2'
+__FD2__="/proc/${BASHPID}/fd/2"
+__STDERR__='/dev/null'
+__CLEANUP_TARGETS__=()
 
 GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
@@ -33,7 +35,7 @@ cleanup() {
     trap 'exit 1' ERR
     trap 'exit 0' INT TERM HUP QUIT
     local target
-    for target in "${CLEANUP_TARGETS[@]}" ; do
+    for target in "${__CLEANUP_TARGETS__[@]}" ; do
         if [ -d "$target" ] ; then
             rm -rf "$target"
         fi
@@ -53,6 +55,7 @@ Options:
   -F, --fonts-only    Install fonts only.
   -l, --ls            List available versions and release dates.
   -L, --ls-fonts      List available Nerd Fonts.
+  -V, --verbose       Enable verbose apt and make/install
   -v, --version       Print installer version.
   -h, --help          Print this help message.
 
@@ -60,16 +63,17 @@ Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
   INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+  VERBOSE             Expects 'true' or 'false'; set by -V
 
 Examples:
   # Install latest verion
-    ./$0
+      $0
   # Install version '3.6'
-    ./$0 -r 3.6
+      $0 -r 3.6
   # Install latest version with three fonts
-    ./$0 -f jetbrainsmono,meslo,hermit
+      $0 -f jetbrainsmono,meslo,hermit
   # Install font 'monofur' only
-    ./$0 -Ff monofur
+      $0 -Ff monofur
 
 https://github.com/WorldShredder
 EOF
@@ -78,8 +82,8 @@ EOF
 parse_opts() {
     set -Cu
     local short_opts long_opts params
-    short_opts='r:f:oFlLvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,ls,ls-fonts,version,help'
+    short_opts='r:f:oFlLVvh'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -100,19 +104,22 @@ parse_opts() {
                 INSTALL_TMUX='false'
                 shift ;;
             -l|--ls)
-                if ! which curl &>/dev/null ; then
-                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
+                if ! type curl &>/dev/null ; then
+                    echo -e "\e[31m[ERROR] Missing required package 'curl'\e[0m"
                     return 1
                 fi
                 tmux_list_releases
                 exit 0 ;;
             -L|--ls-fonts)
-                if ! which curl &>/dev/null ; then
-                    echo -e "\e[31mError: Missing required package 'curl'\e[0m"
+                if ! type curl &>/dev/null ; then
+                    echo -e "\e[31m[ERROR] Missing required package 'curl'\e[0m"
                     return 1
                 fi
                 nf_list_fonts
                 exit 0 ;;
+            -V|--verbose)
+                __STDERR__="$__FD2__"
+                shift ;;
             -v|--version)
                 echo "Tmux Installer $__VERSION__"
                 exit 0 ;;
@@ -123,7 +130,7 @@ parse_opts() {
                 shift
                 break ;;
             *)
-                echo -e "\e[31mInvalid option '$1'\e[0m"
+                echo -e "\e[31m[ERROR] Invalid option '$1'\e[0m"
                 return 1 ;;
         esac
     done
@@ -134,22 +141,27 @@ install_dependencies() {
                               'libevent-dev' 'libncurses-dev' 'make' 'gcc')
     declare -a missing_pkgs
     for pkg in "${REQUIRED_PKGS[@]}" ; do
-        ! dpkg -s "$pkg" &>/dev/null && ! which "$pkg" &>/dev/null &&\
+        ! dpkg -s "$pkg" &>/dev/null && ! type "$pkg" &>/dev/null &&\
             missing_pkgs+=("$pkg")
     done
     if [ "${#missing_pkgs[@]}" -gt 0 ] ; then
-        echo -e "\e[33mWarn: Missing required packages: ${missing_pkgs[*]}\e[0m"
-        while read -n1 -p 'Install missing packages (Y/n) ' ; do
-            echo
+        echo -e "\e[33m[WARN ] Missing required packages: ${missing_pkgs[*]}\e[0m"
+        while true ; do
+            echo -ne "\e[34m[--?--]-> Install missing packages "\
+                    "(\e[32mY\e[34m/\e[31mn\e[34m)\e[0m "
+            read -n 1 -p '' ; echo
             case "$REPLY" in
                 [yY]|'')
-                    sudo apt update
-                    sudo apt install -y ${missing_pkgs[*]} --no-install-recommends
+                    echo -e '\e[34m[INFO ] Updating apt package lists...\e[0m'
+                    sudo apt update &>"$__STDERR__"
+                    echo -e '\e[34m[INFO ] Installing missing packages...\e[0m'
+                    sudo apt install -y ${missing_pkgs[*]} \
+                        --no-install-recommends &>"$__STDERR__"
                     break ;;
                 [nN])
                     return 1 ;;
                 *)
-                    echo -e "\e[31mError: Invalid response '$REPLY'\e[0m" ;;
+                    echo -e "\e[33m[WARN ] Invalid response '$REPLY'\e[0m" ;;
             esac
         done
     fi
@@ -183,7 +195,7 @@ nf_install_font() {
     local font_name="$1"
     local font_data="$2"
     if [ -z "$font_data" ] ; then
-        echo -e "\e[34mInfo: Fetching data from NerdFonts\e[0m"
+        echo -e "\e[34m[INFO ] Fetching data from NerdFonts\e[0m"
         font_data="$(nf_get_fonts)"
     fi
 
@@ -192,17 +204,17 @@ nf_install_font() {
 
     local build_dir
     build_dir="$(mktemp -d 2>/dev/null)"
-    CLEANUP_TARGETS+=("$build_dir")
+    __CLEANUP_TARGETS__+=("$build_dir")
 
     local font_archive data_dir
     font_archive="${build_dir}/${font_name}.tar.xz"
     data_dir="${build_dir}/font_data"
     mkdir "$data_dir"
 
-    echo -e "\e[34mInfo: Downloading font '$font_name'\e[0m"
+    echo -e "\e[34m[INFO ] Downloading font '$font_name'\e[0m"
     curl -sL "$location" > "$font_archive"
 
-    echo -e "\e[34mInfo: Installing font '$font_name'\e[0m"
+    echo -e "\e[34m[INFO ] Installing font '$font_name'\e[0m"
     if [ "$PREFER_OTF" == 'true' ] \
     && tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.otf' 2>/dev/null ; then
         sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
@@ -213,7 +225,7 @@ nf_install_font() {
     fi
 
     if [ "$?" != '0' ] ; then
-        echo -e "\e[31mError: Failed to install font '$font_name'\e[0m"
+        echo -e "\e[31m[ERROR] Failed to install font '$font_name'\e[0m"
         return 1
     fi
 }
@@ -222,7 +234,7 @@ nf_install_fonts() {
     local fonts="$1"
     local font_data="$2"
     if [ -z "$font_data" ] ; then
-        echo -e "\e[34mInfo: Fetching data from NerdFonts\e[0m"
+        echo -e "\e[34m[INFO ] Fetching data from NerdFonts\e[0m"
         font_data="$(nf_get_fonts)"
     fi
     local font_name
@@ -261,25 +273,69 @@ tmux_get_location() {
         grep -oE '^https://github\.com/.+'
 }
 
+tmux_get_tag_name() {
+    # TODO consider .name (tmux x.y) for direct comparison with `tmux -V`
+    local release_data="$1"
+    local query='.tag_name'
+    jq -r "$query" <<< "$release_data" 2>/dev/null
+}
+
+tmux_verify_install() {
+    local release_data="$1"
+    local tag_name="$2"
+
+    echo -e "\e[34m[INFO ] Verifying Tmux install\e[0m"
+    echo -ne '  \e[34m- Command `tmux` available ... '
+    type tmux &>/dev/null || {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+
+    local current_version
+    current_version="$(tmux -V | awk '{print $2}')"
+    echo -ne "  \e[34m- Tmux version check ... "
+    [ "$tag_name" != "$current_version" ] && {
+        echo -e "\e[31mFAIL ($tag_name != $current_version)\e[0m"
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+}
+
 tmux_install() {
-    [ -z "$TMUX_RELEASE" ] &&\
+    # Only use 'all' where large datasets are needed, e.g.: --ls
+    [ -z "$TMUX_RELEASE" ] || [ "${TMUX_RELEASE,,}" == 'all' ] &&\
         TMUX_RELEASE='latest'
 
+    local release_data="$1"
+    if [ -z "$release_data" ] ; then
+        echo -e "\e[34m[INFO ] Fetching Tmux '$TMUX_RELEASE' metadata"
+        release_data="$(tmux_get_release "$TMUX_RELEASE")"
+    fi
+    TMUX_RELEASE="$(tmux_get_tag_name "$release_data")"
+
     local location
-    location="$(tmux_get_location "$TMUX_RELEASE")"
+    location="$(tmux_get_location '' "$release_data")"
 
     local build_dir
     build_dir="$(mktemp -d 2>/dev/null)"
-    CLEANUP_TARGETS+=("$build_dir")
+    __CLEANUP_TARGETS__+=("$build_dir")
 
-    echo -e "\e[34mInfo: Installing tmux version: $TMUX_RELEASE\e[0m"
+    echo -e "\e[34m[INFO ] Downloading Tmux \e[35m$TMUX_RELEASE\e[0m"
     curl -sL "$location" | tar -xz -C "$build_dir"
-
     cd "$build_dir"/tmux-*
-    ./configure && make
-    sudo make install
 
-    echo -e "\e[34mInfo: \e[35mtmux -V \e[34m= \e[35m$(tmux -V)\e[0m"
+    echo -e "\e[34m[INFO ] Building Tmux from source\e[0m"
+    ./configure &>"$__STDERR__"
+    make &>"$__STDERR__"
+
+    echo -e "\e[34m[INFO ] Installing Tmux\e[0m"
+    sudo make install &>"$__STDERR__"
+
+
+    tmux_verify_install "$release_data" "$TMUX_RELEASE"
+
+    echo -e "\e[34m[INFO ] Tmux \e[35m${TMUX_RELEASE} \e[34minstall complete\e[0m"
 }
 
 installer() {
@@ -293,11 +349,11 @@ installer() {
     [ -n "$INSTALL_FONTS" ] &&\
         nf_install_fonts "$INSTALL_FONTS"
 
-    echo -e '\e[32mOK: Installation complete!\[0m'
+    echo -e '\e[32m[OK   ] All processes complete\e[0m'
     return 0
 }
 
-trap 'echo -e "\e[31mFatal: Something went wrong\e[0m" ; cleanup ; exit 1' ERR
+trap 'echo -e "\e[31m[FATAL] Something went wrong\e[0m" ; cleanup ; exit 1' ERR
 trap 'cleanup ; exit 0' INT TERM HUP QUIT
 
 installer "$@"
