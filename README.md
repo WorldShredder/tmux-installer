@@ -37,22 +37,30 @@ If you setup Linux systems on a regular basis, you'll know having access to conv
 Usage: src/install.sh [OPTIONS...]
 
 Options:
-  -r, --release       Specificy a Tmux release to download and install.
-  -f, --fonts         A comma separated list of Nerd Fonts to install.
-  -o, --otf           Install opentype fonts if available.
-  -F, --fonts-only    Install fonts only.
-  -l, --ls            List available versions and release dates.
-  -L, --ls-fonts      List available Nerd Fonts.
-  -V, --verbose       Enable verbose apt and make/install
-  -v, --version       Print installer version.
-  -h, --help          Print this help message.
+  -r, --release      Specificy a Tmux release to download and install.
+  -f, --fonts        A comma separated list of Nerd Fonts to install.
+  -o, --otf          Install opentype fonts if available.
+  -F, --fonts-only   Install fonts only.
+  -d, --plugins-dir  Specify the Tmux plugins directory path. The default
+                     path is '~/.tmux/plugins'.
+      --no-tpm       Do not install Tmux Plugin Manager (TPM).
+  -l, --ls           List available versions and release dates.
+  -L, --ls-fonts     List available Nerd Fonts.
+  -V, --verbose      Enable verbose apt/git/make/install
+  -v, --version      Print installer version.
+  -h, --help         Print this help message.
 
 Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
+  TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
+  INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by -F
   VERBOSE             Expects 'true' or 'false'; set by -V
 ```
+
+> [!NOTE]
+> When executing with sudo, the installer will assume a default plugins directory of '/home/$SUDO\_USER/.tmux/plugins' unless specified otherwise with --plugins-dir. If $SUDO\_USER is empty, $HOME is used.
 
 ## Examples
 
@@ -89,10 +97,11 @@ Environment:
 ## Todo
 
 - [ ] Option to remove current installation of **tmux**.
-- [ ] Option to define installation directory.
+- [ ] Option to define Tmux install path.
 - [x] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
 - [ ] Option to install a given `.tmux.conf` from file and URL.
 - [ ] Add route to build from version control.
 - [ ] Implement proper logging.
-- [ ] Option to install & configure TPM.
+- [x] Option to install & configure TPM.
+- [ ] Implement TPM plugin browser.
 - [ ] Dependency management for `yum`, `dnf`, `pacman`.
