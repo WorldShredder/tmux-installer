@@ -16,7 +16,9 @@ If you setup Linux systems on a regular basis, you'll know having access to conv
 ## Usage
 
 > [!NOTE]
-> See [options](#options) for commandline args.
+> - Execute with `sudo` to avoid multiple password requests by `apt` during dependency installation.
+> - For a root install of **TPM**, you must _login_ as `root` -- the installer relies on `$SUDO_USER` to handle execution with `sudo`.
+> - See [options](#options) for commandline args.
 
 - #### (A) Run Via Curl
 
@@ -34,7 +36,7 @@ If you setup Linux systems on a regular basis, you'll know having access to conv
 ## Options
 
 ```
-Usage: src/install.sh [OPTIONS...]
+Usage: install.sh [OPTIONS...]
 
 Options:
   -r, --release      Specificy a Tmux release to download and install.
@@ -44,6 +46,7 @@ Options:
   -d, --plugins-dir  Specify the Tmux plugins directory path. The default
                      path is '~/.tmux/plugins'.
       --no-tpm       Do not install Tmux Plugin Manager (TPM).
+      --no-tmux      Do not install Tmux.
   -l, --ls           List available versions and release dates.
   -L, --ls-fonts     List available Nerd Fonts.
   -V, --verbose      Enable verbose apt/git/make/install
@@ -55,43 +58,43 @@ Environment:
   INSTALL_FONTS       Same as -f|--fonts
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
-  INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+  INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
   VERBOSE             Expects 'true' or 'false'; set by -V
 ```
 
 > [!NOTE]
-> When executing with sudo, the installer will assume a default plugins directory of '/home/$SUDO\_USER/.tmux/plugins' unless specified otherwise with --plugins-dir. If $SUDO\_USER is empty, $HOME is used.
+> When executing with sudo, the installer will assume a default plugins directory of `/home/$SUDO_USER/.tmux/plugins` unless specified otherwise with `--plugins-dir`. If `$SUDO_USER` is empty, `$USER` is used.
 
 ## Examples
 
 - #### Install latest Tmux release
 
     ```bash
-    bash src/install.sh
+    bash install.sh
     ```
 
 - #### Install Tmux release `3.6` with `JetbrainsMono` font
 
     ```bash
-    bash src/install.sh -r 3.6 -f jetbrainsmono
+    bash install.sh -r 3.6 -f jetbrainsmono
     ```
 
 - #### Install fonts only (no Tmux)
 
     ```bash
-    bash src/install.sh -Ff arimo,noto,tinos
+    bash install.sh -Ff arimo,noto,tinos
     ```
 
 - #### List available Tmux releases
 
     ```bash
-    bash src/install.sh -l
+    bash install.sh -l
     ```
 
 - #### List available [NerdFonts](https://github.com/ryanoasis/nerd-fonts)
 
     ```bash
-    bash src/install.sh -L
+    bash install.sh -L
     ```
 
 ## Todo
