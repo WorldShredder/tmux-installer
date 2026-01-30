@@ -5,11 +5,11 @@
 
 ######################################################################
 ##                                                                  ##
-## - Downloads and installs the latest version of Tmux              ##
+## - Downloads and installs the latest version of Tmux and TPM      ##
 ##                                                                  ##
 ## - Install one or more NerdFonts from 'ryanoasis/nerd-fonts'      ##
 ##                                                                  ##
-## - Handles necessary compiler dependencies                        ##
+## - Handles necessary compiler dependencies (apt only atm)         ##
 ##                                                                  ##
 ## - See -h|--help for more options                                 ##
 ##                                                                  ##
@@ -66,7 +66,7 @@ Options:
       --no-tpm       Do not install Tmux Plugin Manager (TPM).
   -l, --ls           List available versions and release dates.
   -L, --ls-fonts     List available Nerd Fonts.
-  -V, --verbose      Enable verbose apt and make/install
+  -V, --verbose      Enable verbose apt/git/make/install
   -v, --version      Print installer version.
   -h, --help         Print this help message.
 
@@ -157,6 +157,8 @@ parse_opts() {
 }
 
 install_depends() {
+    local missing_pkgs="$1"
+
     echo -ne '\e[34m[INFO ] Updating apt package lists ... \e[0m'
     sudo apt update &>"$__STDERR__" ||\
     {
@@ -166,7 +168,7 @@ install_depends() {
     echo -e '\e[32mOK\e[0m'
 
     echo -ne '\e[34m[INFO ] Installing missing packages ... \e[0m'
-    sudo apt install -y ${missing_pkgs[*]} \
+    sudo apt install -y $missing_pkgs \
     --no-install-recommends &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
@@ -188,15 +190,22 @@ check_depends() {
             missing_pkgs+=("$pkg")
     done
 
-    [ "${#missing_pkgs[@]}" -gt 0 ] &&\
-        echo -e "\e[33m[WARN ] Missing required packages: ${missing_pkgs[*]}\e[0m"
+    # Whonix compatibility
+    type whonix &>/dev/null &&\
+    [ "$INSTALL_TPM" == 'true' ] &&\
+    [ ! -f '/usr/bin/git.anondist-orig' ] &&\
+        missing_pkgs+=('git')
 
+    [ "${#missing_pkgs[@]}" -lt 1 ] &&\
+        return
+
+    echo -e "\e[33m[WARN ] Missing required packages: ${missing_pkgs[*]}\e[0m"
     while [ "${#missing_pkgs[@]}" -gt 0 ] ; do
         echo -ne "\e[34m[--?--]-> Install missing packages (y/n) \e[0m"
         read -p ''
         case "$REPLY" in
-            [yY]|'')
-                install_depends "${missing_packages[*]}"
+            [yY])
+                install_depends "${missing_pkgs[*]}"
                 break ;;
             [nN])
                 return 1 ;;
@@ -419,12 +428,13 @@ tmux_install() {
 
 tpm_install() {
     echo -ne '\e[34m[INFO ] Cloning TPM repository ... \e[0m'
-    git clone "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" ||\
+    git clone "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
     }
     echo -e '\e[32mOK\e[0m'
+    __CLEANUP_TARGETS__+=("${TMUX_PLUGINS_DIR}/tpm/.git")
 }
 
 installer() {

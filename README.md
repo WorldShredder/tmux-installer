@@ -46,7 +46,7 @@ Options:
       --no-tpm       Do not install Tmux Plugin Manager (TPM).
   -l, --ls           List available versions and release dates.
   -L, --ls-fonts     List available Nerd Fonts.
-  -V, --verbose      Enable verbose apt and make/install
+  -V, --verbose      Enable verbose apt/git/make/install
   -v, --version      Print installer version.
   -h, --help         Print this help message.
 
@@ -97,11 +97,11 @@ Environment:
 ## Todo
 
 - [ ] Option to remove current installation of **tmux**.
-- [ ] Option to define installation directory.
+- [ ] Option to define Tmux install path.
 - [x] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
 - [ ] Option to install a given `.tmux.conf` from file and URL.
 - [ ] Add route to build from version control.
 - [ ] Implement proper logging.
-- [ ] Option to install & configure TPM.
+- [x] Option to install & configure TPM.
 - [ ] Implement TPM plugin browser.
 - [ ] Dependency management for `yum`, `dnf`, `pacman`.
