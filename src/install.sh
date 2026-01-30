@@ -25,10 +25,17 @@ __CLEANUP_TARGETS__=()
 GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
-PREFER_OTF='false'
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
+PREFER_OTF='false'
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
+
+# We should assume installer will be ran with `sudo` which means we need to
+# get the sudoer's $HOME instead of root's.
+
+TMUX_PLUGINS_DIR="$HOME/.tmux/plugins"
+[ -n "$SUDO_USER" ] &&\
+    TMUX_PLUGINS_DIR="$(sudo -u "$SUDO_USER" bash -c 'echo "$HOME"')"
 
 cleanup() {
     trap - ERR INT TERM HUP QUIT
@@ -49,19 +56,24 @@ Usage: $0 [OPTIONS...]
 Install the latest version of Tmux and specified NerdFonts.
 
 Options:
-  -r, --release       Specificy a Tmux release to download and install.
-  -f, --fonts         A comma separated list of Nerd Fonts to install.
-  -o, --otf           Install opentype fonts if available.
-  -F, --fonts-only    Install fonts only.
-  -l, --ls            List available versions and release dates.
-  -L, --ls-fonts      List available Nerd Fonts.
-  -V, --verbose       Enable verbose apt and make/install
-  -v, --version       Print installer version.
-  -h, --help          Print this help message.
+  -r, --release      Specificy a Tmux release to download and install.
+  -f, --fonts        A comma separated list of Nerd Fonts to install.
+  -o, --otf          Install opentype fonts if available.
+  -F, --fonts-only   Install fonts only.
+  -d, --plugins-dir  Specify the Tmux plugins directory path. The default
+                     path is '~/.tmux/plugins'.
+      --no-tpm       Do not install Tmux Plugin Manager (TPM).
+  -l, --ls           List available versions and release dates.
+  -L, --ls-fonts     List available Nerd Fonts.
+  -V, --verbose      Enable verbose apt and make/install
+  -v, --version      Print installer version.
+  -h, --help         Print this help message.
 
 Environment:
   TMUX_RELEASE        Same as -r|--release
+  TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_FONTS       Same as -f|--fonts
+  NO_INSTALL_TPM      Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by -F
   VERBOSE             Expects 'true' or 'false'; set by -V
 
@@ -75,6 +87,11 @@ Examples:
   # Install font 'monofur' only
       $0 -Ff monofur
 
+Notes:
+  When executing with sudo, the installer will assume a default plugins
+  directory of '/home/\$SUDO_USER/.tmux/plugins' unless specified
+  otherwise with --plugins-dir. If \$SUDO_USER is empty, \$HOME is used.
+
 https://github.com/WorldShredder
 EOF
 }
@@ -83,7 +100,7 @@ parse_opts() {
     set -Cu
     local short_opts long_opts params
     short_opts='r:f:oFlLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,ls,ls-fonts,verbose,version,help'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,no-tpm,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -104,17 +121,13 @@ parse_opts() {
                 INSTALL_TMUX='false'
                 shift ;;
             -l|--ls)
-                if ! type curl &>/dev/null ; then
-                    echo -e "\e[31m[ERROR] Missing required package 'curl'\e[0m"
-                    return 1
-                fi
+                INSTALL_TMUX='false'
+                check_depends
                 tmux_list_releases
                 exit 0 ;;
             -L|--ls-fonts)
-                if ! type curl &>/dev/null ; then
-                    echo -e "\e[31m[ERROR] Missing required package 'curl'\e[0m"
-                    return 1
-                fi
+                INSTALL_TMUX='false'
+                check_depends
                 nf_list_fonts
                 exit 0 ;;
             -V|--verbose)
@@ -156,30 +169,32 @@ install_depends() {
 }
 
 check_depends() {
-    declare -a REQUIRED_PKGS=('jq' 'curl' 'mktemp' 'xargs' 'bison'
-                              'libevent-dev' 'libncurses-dev' 'make' 'gcc')
+    declare -a REQUIRED_PKGS=('jq' 'curl')
+    [ "$INSTALL_TMUX" == 'true' ] &&\
+        REQUIRED_PKGS+=('mktemp' 'xargs' 'bison' 'libevent-dev'
+                        'libncurses-dev' 'make' 'gcc')
     declare -a missing_pkgs
     for pkg in "${REQUIRED_PKGS[@]}" ; do
         ! dpkg -s "$pkg" &>/dev/null && ! type "$pkg" &>/dev/null &&\
             missing_pkgs+=("$pkg")
     done
-    if [ "${#missing_pkgs[@]}" -gt 0 ] ; then
+
+    [ "${#missing_pkgs[@]}" -gt 0 ] &&\
         echo -e "\e[33m[WARN ] Missing required packages: ${missing_pkgs[*]}\e[0m"
-        while true ; do
-            echo -ne "\e[34m[--?--]-> Install missing packages "\
-                    "(\e[32mY\e[34m/\e[31mn\e[34m)\e[0m "
-            read -n 1 -p ''
-            case "$REPLY" in
-                [yY]|'')
-                    install_depends "${missing_packages[*]}"
-                    break ;;
-                [nN])
-                    echo ; return 1 ;;
-                *)
-                    echo -e "\n\e[33m[WARN ] Invalid response '$REPLY'\e[0m" ;;
-            esac
-        done
-    fi
+
+    while [ "${#missing_pkgs[@]}" -gt 0 ] ; do
+        echo -ne "\e[34m[--?--]-> Install missing packages (y/n) \e[0m"
+        read -p ''
+        case "$REPLY" in
+            [yY]|'')
+                install_depends "${missing_packages[*]}"
+                break ;;
+            [nN])
+                return 1 ;;
+            *)
+                echo -e "\e[33m[WARN ] Invalid response '$REPLY'\e[0m" ;;
+        esac
+    done
 }
 
 nf_get_fonts() {
@@ -392,6 +407,10 @@ tmux_install() {
     echo -e '\e[32mOK\e[0m'
 
     tmux_verify_install "$release_data" "$tag_name"
+}
+
+tpm_install() {
+    :
 }
 
 installer() {
