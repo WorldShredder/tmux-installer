@@ -26,6 +26,7 @@ GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
+INSTALL_TPM="${INSTALL_TPM:-true}"
 PREFER_OTF='false'
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
@@ -43,9 +44,8 @@ cleanup() {
     trap 'exit 0' INT TERM HUP QUIT
     local target
     for target in "${__CLEANUP_TARGETS__[@]}" ; do
-        if [ -d "$target" ] ; then
+        [ -d "$target" ] || [ -f "$target" ] &&\
             rm -rf "$target"
-        fi
     done
 }
 
@@ -71,9 +71,9 @@ Options:
 
 Environment:
   TMUX_RELEASE        Same as -r|--release
-  TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_FONTS       Same as -f|--fonts
-  NO_INSTALL_TPM      Expects 'true' or 'false'; set by --no-tpm
+  TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
+  INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by -F
   VERBOSE             Expects 'true' or 'false'; set by -V
 
@@ -99,8 +99,8 @@ EOF
 parse_opts() {
     set -Cu
     local short_opts long_opts params
-    short_opts='r:f:oFlLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,no-tpm,ls,ls-fonts,verbose,version,help'
+    short_opts='r:f:oFd:lLVvh'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tpm,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -119,6 +119,12 @@ parse_opts() {
                 shift ;;
             -F|--fonts-only)
                 INSTALL_TMUX='false'
+                shift ;;
+            -d|--plugins-dir)
+                TMUX_PLUGINS_DIR="$2"
+                shift 2 ;;
+            --no-tpm)
+                INSTALL_TPM='false'
                 shift ;;
             -l|--ls)
                 INSTALL_TMUX='false'
