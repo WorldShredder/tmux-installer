@@ -46,6 +46,7 @@ Options:
   -d, --plugins-dir  Specify the Tmux plugins directory path. The default
                      path is '~/.tmux/plugins'.
       --no-tpm       Do not install Tmux Plugin Manager (TPM).
+      --no-tmux      Do not install Tmux.
   -l, --ls           List available versions and release dates.
   -L, --ls-fonts     List available Nerd Fonts.
   -V, --verbose      Enable verbose apt/git/make/install
@@ -57,7 +58,7 @@ Environment:
   INSTALL_FONTS       Same as -f|--fonts
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
-  INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+  INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
   VERBOSE             Expects 'true' or 'false'; set by -V
 ```
 

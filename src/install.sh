@@ -36,8 +36,10 @@ TMUX_PLUGINS_DIR="${__HOME__}/.tpm/plugins"
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
 INSTALL_TPM="${INSTALL_TPM:-true}"
 PREFER_OTF='false'
+NO_INSTALL='false'
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
+VERBOSE="${VERBOSE:-false}"
 
 cleanup() {
     trap - ERR INT TERM HUP QUIT
@@ -64,6 +66,7 @@ Options:
   -d, --plugins-dir  Specify the Tmux plugins directory path. The default
                      path is '~/.tmux/plugins'.
       --no-tpm       Do not install Tmux Plugin Manager (TPM).
+      --no-tmux      Do not install Tmux.
   -l, --ls           List available versions and release dates.
   -L, --ls-fonts     List available Nerd Fonts.
   -V, --verbose      Enable verbose apt/git/make/install
@@ -75,7 +78,7 @@ Environment:
   INSTALL_FONTS       Same as -f|--fonts
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
-  INSTALL_TMUX        Expects 'true' or 'false'; set by -F
+  INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
   VERBOSE             Expects 'true' or 'false'; set by -V
 
 Examples:
@@ -102,7 +105,7 @@ parse_opts() {
     set -Cu
     local short_opts long_opts params
     short_opts='r:f:oFd:lLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tpm,ls,ls-fonts,verbose,version,help'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -121,22 +124,24 @@ parse_opts() {
                 shift ;;
             -F|--fonts-only)
                 INSTALL_TMUX='false'
+                INSTALL_TPM='false'
                 shift ;;
             -d|--plugins-dir)
                 TMUX_PLUGINS_DIR="$2"
                 shift 2 ;;
+            --no-tmux)
+                INSTALL_TMUX='false'
+                shift ;;
             --no-tpm)
                 INSTALL_TPM='false'
                 shift ;;
             -l|--ls)
-                INSTALL_TMUX='false'
-                INSTALL_TPM='false'
+                NO_INSTALL='true'
                 check_depends
                 tmux_list_releases
                 exit 0 ;;
             -L|--ls-fonts)
-                INSTALL_TMUX='false'
-                INSTALL_TPM='false'
+                NO_INSTALL='true'
                 check_depends
                 nf_list_fonts
                 exit 0 ;;
@@ -181,12 +186,22 @@ install_depends() {
 }
 
 check_depends() {
+    # jq and curl required for --ls and --ls-fonts
     declare -a REQUIRED_PKGS=('jq' 'curl')
+
     [ "$INSTALL_TMUX" == 'true' ] &&\
+    [ "$NO_INSTALL" == 'false' ] &&\
+    {
         REQUIRED_PKGS+=('mktemp' 'xargs' 'bison' 'libevent-dev'
                         'libncurses-dev' 'make' 'gcc')
+    }
+
     [ "$INSTALL_TPM" == 'true' ] &&\
+    [ "$NO_INSTALL" == 'false' ] &&\
+    {
         REQUIRED_PKGS+=('git')
+    }
+
     declare -a missing_pkgs
     for pkg in "${REQUIRED_PKGS[@]}" ; do
         ! dpkg -s "$pkg" &>/dev/null && ! type "$pkg" &>/dev/null &&\
@@ -195,9 +210,12 @@ check_depends() {
 
     # Whonix compatibility
     type whonix &>/dev/null &&\
+    [ "$NO_INSTALL" == 'false' ] &&\
     [ "$INSTALL_TPM" == 'true' ] &&\
     [ ! -f '/usr/bin/git.anondist-orig' ] &&\
+    {
         missing_pkgs+=('git')
+    }
 
     [ "${#missing_pkgs[@]}" -lt 1 ] &&\
         return
@@ -431,7 +449,8 @@ tmux_install() {
 
 tpm_install() {
     echo -ne '\e[34m[INFO ] Cloning TPM repository ... \e[0m'
-    git clone "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
+    sudo -u "$__USER__" git clone \
+        "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
@@ -441,8 +460,8 @@ tpm_install() {
 }
 
 installer() {
-    parse_opts "$@"
-    check_depends
+    [ -n "$INSTALL_FONTS" ] &&\
+        nf_install_fonts
 
     [ "$INSTALL_TMUX" == 'true' ] &&\
         tmux_install
@@ -450,16 +469,24 @@ installer() {
     [ "$INSTALL_TPM" == 'true' ] &&\
         tpm_install
 
-    [ -n "$INSTALL_FONTS" ] &&\
-        nf_install_fonts
-
-    echo -e '\e[32m[OK   ] All processes complete\e[0m'
     return 0
+}
+
+pre_install() {
+    parse_opts "$@"
+    check_depends
+}
+
+main() {
+    pre_install "$@"
+    if [ "$NO_INSTALL" != 'true' ] ; then
+        installer
+        echo -e '\e[32m[OK   ] All processes complete\e[0m'
+    fi
+    kill -TERM "$BASHPID"
 }
 
 trap 'echo -e "\e[31m[FATAL] Something went wrong\e[0m" ; cleanup ; exit 1' ERR
 trap 'cleanup ; exit 0' INT TERM HUP QUIT
 
-installer "$@"
-
-kill -TERM "$BASHPID"
+main "$@"
