@@ -25,6 +25,7 @@ __CLEANUP_TARGETS__=()
 GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
+TPM_REPO_URL='https://github.com/tmux-plugins/tpm'
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
 INSTALL_TPM="${INSTALL_TPM:-true}"
 PREFER_OTF='false'
@@ -179,6 +180,8 @@ check_depends() {
     [ "$INSTALL_TMUX" == 'true' ] &&\
         REQUIRED_PKGS+=('mktemp' 'xargs' 'bison' 'libevent-dev'
                         'libncurses-dev' 'make' 'gcc')
+    [ "$INSTALL_TPM" == 'true' ] &&\
+        REQUIRED_PKGS+=('git')
     declare -a missing_pkgs
     for pkg in "${REQUIRED_PKGS[@]}" ; do
         ! dpkg -s "$pkg" &>/dev/null && ! type "$pkg" &>/dev/null &&\
@@ -281,8 +284,7 @@ nf_install_font() {
 }
 
 nf_install_fonts() {
-    local fonts="$1"
-    local font_data="$2"
+    local font_data="$1"
     if [ -z "$font_data" ] ; then
         echo -ne "\e[34m[INFO ] Fetching NerdFonts metadata ... \e[0m"
         font_data="$(nf_get_fonts)" ||\
@@ -295,7 +297,7 @@ nf_install_fonts() {
     local font_name
     while read -rd ',' font_name ; do
         nf_install_font "$font_name" "$font_data"
-    done <<< "${fonts},"
+    done <<< "${INSTALL_FONTS},"
 }
 
 tmux_get_release() {
@@ -416,7 +418,13 @@ tmux_install() {
 }
 
 tpm_install() {
-    :
+    echo -ne '\e[34m[INFO ] Cloning TPM repository ... \e[0m'
+    git clone "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
 }
 
 installer() {
@@ -426,8 +434,11 @@ installer() {
     [ "$INSTALL_TMUX" == 'true' ] &&\
         tmux_install
 
+    [ "$INSTALL_TPM" == 'true' ] &&\
+        tpm_install
+
     [ -n "$INSTALL_FONTS" ] &&\
-        nf_install_fonts "$INSTALL_FONTS"
+        nf_install_fonts
 
     echo -e '\e[32m[OK   ] All processes complete\e[0m'
     return 0
