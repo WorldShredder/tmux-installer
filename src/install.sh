@@ -20,6 +20,7 @@ set -Eeo pipefail
 __VERSION__='0.3.0'
 __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
+__TMP_SUFFIX__='.tmux-installer'
 __CLEANUP_TARGETS__=()
 
 # We should assume installer will be ran with `sudo` which means we need to
@@ -32,14 +33,15 @@ GITHUB_API_URL="https://api.github.com/repos"
 NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
 TPM_REPO_URL='https://github.com/tmux-plugins/tpm'
-TMUX_PLUGINS_DIR="${__HOME__}/.tpm/plugins"
+TMUX_PLUGINS_DIR="${__HOME__}/.tmux/plugins"
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
 INSTALL_TPM="${INSTALL_TPM:-true}"
 PREFER_OTF='false'
 NO_INSTALL='false'
+VERBOSE="${VERBOSE:-false}"
+
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
-VERBOSE="${VERBOSE:-false}"
 
 cleanup() {
     trap - ERR INT TERM HUP QUIT
@@ -50,6 +52,10 @@ cleanup() {
         [ -d "$target" ] || [ -f "$target" ] &&\
             rm -rf "$target"
     done
+}
+
+mktemp_dir() {
+    mktemp -d --suffix "$__TMP_SUFFIX__" 2>/dev/null
 }
 
 print_help() {
@@ -277,7 +283,7 @@ nf_install_font() {
     location="$(nf_get_location "$font_name" "$font_data")"
 
     local build_dir
-    build_dir="$(mktemp -d 2>/dev/null)"
+    build_dir="$(mktemp_dir)"
     __CLEANUP_TARGETS__+=("$build_dir")
 
     local font_archive data_dir
@@ -415,7 +421,7 @@ tmux_install() {
     location="$(tmux_get_location '' "$release_data")"
 
     local build_dir
-    build_dir="$(mktemp -d 2>/dev/null)"
+    build_dir="$(mktemp_dir)"
     __CLEANUP_TARGETS__+=("$build_dir")
 
     echo -ne "\e[34m[INFO ] Downloading Tmux \e[35m${tag_name} \e[34m... \e[0m"
