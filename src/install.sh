@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.2.3'
+__VERSION__='0.3.0'
 __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
 __CLEANUP_TARGETS__=()
@@ -94,6 +94,7 @@ Notes:
   otherwise with --plugins-dir. If \$SUDO_USER is empty, \$HOME is used.
 
 https://github.com/WorldShredder
+tmux-installer v${__VERSION__}
 EOF
 }
 
@@ -129,11 +130,13 @@ parse_opts() {
                 shift ;;
             -l|--ls)
                 INSTALL_TMUX='false'
+                INSTALL_TPM='false'
                 check_depends
                 tmux_list_releases
                 exit 0 ;;
             -L|--ls-fonts)
                 INSTALL_TMUX='false'
+                INSTALL_TPM='false'
                 check_depends
                 nf_list_fonts
                 exit 0 ;;
