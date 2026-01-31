@@ -4,10 +4,12 @@
 
 > [!IMPORTANT]
 > - Tested and working on **debian 12**
-> - Requires `dpkg` and `apt` for dependency management (see [todo](#todo))
-> - Try installer in a VM _before_ your main system.
+> - Currently requires `dpkg` and `apt` for dependency management
+> - Try installer in a VM _before_ your main system
 
 An unofficial installer for the official [tmux](https://github.com/tmux/tmux) project. Use it to install **tmux** on a new system or upgrade an existing install. You may also use it to download and install fonts directly from the latest [NerdFonts](https://github.com/ryanoasis/nerd-fonts) release.
+
+See [docs/todo.md](/docs/todo.md) for planned features.
 
 ### Rationale
 
@@ -97,15 +99,3 @@ Environment:
     bash install.sh -L
     ```
 
-## Todo
-
-- [ ] Option to remove current installation of **tmux**.
-- [ ] Option to define Tmux install path.
-- [x] Option to define a [NerdFont](https://www.nerdfonts.com/) for install.
-- [ ] Option to install a given `.tmux.conf` from file and URL.
-- [ ] Add route to build from version control.
-- [ ] Implement proper logging.
-- [x] Option to install & configure TPM.
-- [ ] Implement TPM plugin browser.
-- [ ] Dependency management for `yum`, `dnf`, `pacman`.
-- [ ] (Dev) Run through `shellcheck` and `shfmt`.
