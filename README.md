@@ -108,3 +108,4 @@ Environment:
 - [x] Option to install & configure TPM.
 - [ ] Implement TPM plugin browser.
 - [ ] Dependency management for `yum`, `dnf`, `pacman`.
+- [ ] (Dev) Run through `shellcheck` and `shfmt`.
