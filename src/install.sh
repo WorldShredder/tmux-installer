@@ -145,6 +145,8 @@ parse_opts() {
                 shift ;;
             -u|--user)
                 __USER__="$2"
+                __HOME__="$(sudo -u "$__USER__" bash -c 'echo $HOME')"
+                TMUX_PLUGINS_DIR="${__HOME__}/.tmux/plugins"
                 shift 2 ;;
             -l|--ls)
                 NO_INSTALL='true'
