@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.3.2'
+__VERSION__='0.3.3'
 __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
 __TMP_SUFFIX__='.tmux-installer'
