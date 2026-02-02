@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.3.1'
+__VERSION__='0.3.2'
 __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
 __TMP_SUFFIX__='.tmux-installer'
@@ -65,19 +65,21 @@ Usage: $0 [OPTIONS...]
 Install the latest version of Tmux and specified NerdFonts.
 
 Options:
-  -r, --release      Specificy a Tmux release to download and install.
-  -f, --fonts        A comma separated list of Nerd Fonts to install.
-  -o, --otf          Install opentype fonts if available.
-  -F, --fonts-only   Install fonts only.
-  -d, --plugins-dir  Specify the Tmux plugins directory path. The default
-                     path is '~/.tmux/plugins'.
-      --no-tpm       Do not install Tmux Plugin Manager (TPM).
-      --no-tmux      Do not install Tmux.
-  -l, --ls           List available versions and release dates.
-  -L, --ls-fonts     List available Nerd Fonts.
-  -V, --verbose      Enable verbose apt/git/make/install
-  -v, --version      Print installer version.
-  -h, --help         Print this help message.
+  -r, --release RELEASE  Specificy a Tmux release to download and install.
+  -f, --fonts FONTS      A comma separated list of Nerd Fonts to install.
+  -o, --otf              Install opentype fonts if available.
+  -F, --fonts-only       Install fonts only.
+  -d, --plugins-dir DIR  Specify the Tmux plugins directory path. The default
+                         path is '~/.tmux/plugins'.
+      --no-tpm           Do not install Tmux Plugin Manager (TPM).
+      --no-tmux          Do not install Tmux.
+  -u, --user USER        User to install Tmux plugins on. Overrides \$SUDO_USER
+                         and \$USER. See notes for more info.
+  -l, --ls               List available versions and release dates.
+  -L, --ls-fonts         List available Nerd Fonts.
+  -V, --verbose          Enable verbose apt/git/make/install
+  -v, --version          Print installer version.
+  -h, --help             Print this help message.
 
 Environment:
   TMUX_RELEASE        Same as -r|--release
@@ -99,8 +101,8 @@ Examples:
 
 Notes:
   When executing with sudo, the installer will assume a default plugins
-  directory of '/home/\$SUDO_USER/.tmux/plugins' unless specified
-  otherwise with --plugins-dir. If \$SUDO_USER is empty, \$HOME is used.
+  directory of '/home/\$SUDO_USER/.tmux/plugins' unless specified otherwise
+  with --plugins-dir or --user. If \$SUDO_USER is empty, \$USER is used
 
 https://github.com/WorldShredder
 tmux-installer v${__VERSION__}
@@ -110,8 +112,8 @@ EOF
 parse_opts() {
     set -Cu
     local short_opts long_opts params
-    short_opts='r:f:oFd:lLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,ls,ls-fonts,verbose,version,help'
+    short_opts='r:f:oFd:u:lLVvh'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,user:,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -141,6 +143,9 @@ parse_opts() {
             --no-tpm)
                 INSTALL_TPM='false'
                 shift ;;
+            -u|--user)
+                __USER__="$2"
+                shift 2 ;;
             -l|--ls)
                 NO_INSTALL='true'
                 check_depends
