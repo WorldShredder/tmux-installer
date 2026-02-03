@@ -40,6 +40,8 @@ Options:
                          path is '~/.tmux/plugins'.
       --no-tpm           Do not install Tmux Plugin Manager (TPM).
       --no-tmux          Do not install Tmux.
+      --clipboard PKG    Specify a clipboard package to install for Tmux.
+                         Default is 'xclip'.
   -u, --user USER        User to install Tmux plugins on. Overrides \$SUDO_USER
                          and \$USER. See notes for more info.
   -l, --ls               List available versions and release dates.
@@ -52,8 +54,10 @@ Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
+  TMUX_CLIPBOARD_PKG  Same as --clipboard
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
+  PREFER_OTF          Expects 'true' or 'false'; set by --otf
   VERBOSE             Expects 'true' or 'false'; set by -V
 ```
 

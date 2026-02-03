@@ -17,10 +17,10 @@
 
 set -Eeo pipefail
 
-__VERSION__='0.3.3'
-__FD2__="/proc/${BASHPID}/fd/2"
+readonly __VERSION__='0.3.3'
+readonly __TMP_SUFFIX__='.tmux-installer'
+readonly __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
-__TMP_SUFFIX__='.tmux-installer'
 __CLEANUP_TARGETS__=()
 
 # We should assume installer will be ran with `sudo` which means we need to
@@ -29,14 +29,15 @@ __CLEANUP_TARGETS__=()
 __USER__="${SUDO_USER:-$USER}"
 __HOME__="$(sudo -u "$__USER__" bash -c 'echo $HOME')"
 
-GITHUB_API_URL="https://api.github.com/repos"
-NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
-TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
-TPM_REPO_URL='https://github.com/tmux-plugins/tpm'
+readonly GITHUB_API_URL="https://api.github.com/repos"
+readonly NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
+readonly TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
+readonly TPM_REPO_URL='https://github.com/tmux-plugins/tpm'
 TMUX_PLUGINS_DIR="${__HOME__}/.tmux/plugins"
+TMUX_CLIPBOARD_PKG='xclip'
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
 INSTALL_TPM="${INSTALL_TPM:-true}"
-PREFER_OTF='false'
+PREFER_OTF="${PREFER_OTF:-false}"
 NO_INSTALL='false'
 VERBOSE="${VERBOSE:-false}"
 
@@ -73,6 +74,8 @@ Options:
                          path is '~/.tmux/plugins'.
       --no-tpm           Do not install Tmux Plugin Manager (TPM).
       --no-tmux          Do not install Tmux.
+      --clipboard PKG    Specify a clipboard package to install for Tmux.
+                         Default is 'xclip'.
   -u, --user USER        User to install Tmux plugins on. Overrides \$SUDO_USER
                          and \$USER. See notes for more info.
   -l, --ls               List available versions and release dates.
@@ -87,6 +90,7 @@ Environment:
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
+  PREFER_OTF          Expects 'true' or 'false'; set by --otf
   VERBOSE             Expects 'true' or 'false'; set by -V
 
 Examples:
@@ -113,7 +117,7 @@ parse_opts() {
     set -Cu
     local short_opts long_opts params
     short_opts='r:f:oFd:u:lLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,user:,ls,ls-fonts,verbose,version,help'
+    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,clipboard:,user:,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -143,6 +147,9 @@ parse_opts() {
             --no-tpm)
                 INSTALL_TPM='false'
                 shift ;;
+            --clipboard)
+                TMUX_CLIPBOARD_PKG="$2"
+                shift 2 ;;
             -u|--user)
                 __USER__="$2"
                 __HOME__="$(sudo -u "$__USER__" bash -c 'echo $HOME')"
@@ -207,6 +214,7 @@ check_depends() {
     {
         REQUIRED_PKGS+=('mktemp' 'xargs' 'bison' 'libevent-dev'
                         'libncurses-dev' 'make' 'gcc')
+        REQUIRED_PKGS+=("$TMUX_CLIPBOARD_PKG")
     }
 
     [ "$INSTALL_TPM" == 'true' ] &&\
