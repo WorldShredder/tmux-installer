@@ -18,19 +18,43 @@
 - [ ] Implement better logging (maybe with `impish` module scheme)
 - [ ] Utilize `readonly` for constants
 - [ ] `mktemp_dir` should take a name reference to automate populating `__CLEANUP_TARGETS__`
+    
+    <details>
+    <summary>Details</summary>
+    
+    At the moment `mktemp_dir` is called in a subshell during variable assignment which prevents appending the cleanup array. Solve by assignment of `build_dir` vars through nameref:
+     
+    ```bash
+    mktemp_dir() {
+        local -n n="$1"
+        n="$(mktemp -d --suffix "$__TMP_SUFFIX__")"
+        __CLEANUP_TARGETS__+=("$n")
+    }
+    ```
+    
+    ```bash
+    local build_dir
+    mktemp_dir build_dir
+    ```
+    
+    </details>
 
-    > At the moment `mktemp_dir` is called in a subshell during variable assignment which prevents appending the cleanup array. Solve by assignment of `build_dir` vars through nameref:
-    > 
-    > ```bash
-    > mktemp_dir() {
-    >     local -n n="$1"
-    >     n="$(mktemp -d --suffix "$__TMP_SUFFIX__")"
-    >     __CLEANUP_TARGETS__+=("$n")
-    > }
-    > ```
-    > 
-    > ```bash
-    > local build_dir
-    > mktemp_dir build_dir
-    > ```
+- [x] Patch Whonix zsh prompt for tmux
+    
+    <details>
+    <summary>Details</summary>
+    
+    Whonix does not check if `TERM=tmux-*` and thus does not correctly apply `PS1`. According to Tmux docs, it relies on the value of `TERM` to properly function, so best not to change its value permanently.
+    
+    Whonix determines `PS1` in `/etc/zsh/zshrc_prompt`. Add to `~/.zshrc`:
+    
+    ```bash
+    [[ "$TERM" = tmux-* ]] &&\
+        TERM='xterm-256color' source /etc/zsh/zshrc_prompt
+    ```
+    
+    </details>
+
+- [ ] Installer should quit if invalid release is given, rather than download latest version.
+- [ ] `tmux_post_install` should update Whonix patch line in `.zshrc` if it exists.
 

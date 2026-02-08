@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-readonly __VERSION__='0.3.3'
+readonly __VERSION__='0.3.4'
 readonly __TMP_SUFFIX__='.tmux-installer'
 readonly __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
@@ -166,7 +166,7 @@ parse_opts() {
                 nf_list_fonts
                 exit 0 ;;
             -V|--verbose)
-                __STDERR__="$__FD2__"
+                VERBOSE='true'
                 shift ;;
             -v|--version)
                 echo "Tmux Installer $__VERSION__"
@@ -230,7 +230,7 @@ check_depends() {
     done
 
     # Whonix compatibility
-    type whonix &>/dev/null &&\
+    [ "$WHONIX" == '1' ] &&\
     [ "$NO_INSTALL" == 'false' ] &&\
     [ "$INSTALL_TPM" == 'true' ] &&\
     [ ! -f '/usr/bin/git.anondist-orig' ] &&\
@@ -404,12 +404,11 @@ tmux_verify_install() {
     local current_version
     current_version="$(tmux -V | awk '{print $2}')"
     echo -ne "  \e[34m- Tmux version check ... "
-    [ "$tag_name" != "$current_version" ] &&\
-    {
-        echo -e "\e[31mFAIL ($tag_name != $current_version)\e[0m"
-        return 1
-    }
-    echo -e '\e[32mOK\e[0m'
+    if [ "$tag_name" != "$current_version" ] ; then
+        echo -e "\e[33mWARN ('$tag_name' != '$current_version')\e[0m"
+    else
+        echo -e '\e[32mOK\e[0m'
+    fi
 }
 
 tmux_install() {
@@ -468,8 +467,27 @@ tmux_install() {
     tmux_verify_install "$release_data" "$tag_name"
 }
 
+tmux_post_install() {
+    if [ "$WHONIX" == '1' ] && [ -f /etc/zsh/zshrc_prompt ] ; then
+        echo -ne '\e[34m[INFO ] Patching Whonix prompt ... \e[0m'
+        echo -e '[[ "$TERM" = tmux-* ]] &&\\\n'\
+            '    TERM="xterm-256color" source /etc/zsh/zshrc_prompt' |\
+            sudo -u "$__USER__" tee -a "$__HOME__"/.zshrc &>/dev/null ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
+        echo -e '\e[32mOK\e[0m'
+    fi
+}
+
 tpm_install() {
-    echo -ne '\e[34m[INFO ] Cloning TPM repository ... \e[0m'
+    if [ -d "${TMUX_PLUGINS_DIR}/tpm" ] ; then
+        echo -ne '\e[34m[INFO ] Updating TPM ... \e[0m'
+        rm -r "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__"
+    else
+        echo -ne '\e[34m[INFO ] Installing TPM ... \e[0m'
+    fi
     sudo -u "$__USER__" git clone \
         "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
     {
@@ -484,8 +502,10 @@ installer() {
     [ -n "$INSTALL_FONTS" ] &&\
         nf_install_fonts
 
-    [ "$INSTALL_TMUX" == 'true' ] &&\
+    if [ "$INSTALL_TMUX" == 'true' ] ; then
         tmux_install
+        tmux_post_install
+    fi
 
     [ "$INSTALL_TPM" == 'true' ] &&\
         tpm_install
@@ -495,6 +515,8 @@ installer() {
 
 pre_install() {
     parse_opts "$@"
+    [ "$VERBOSE" == 'true' ] &&\
+        __STDERR__="$__FD2__"
     check_depends
 }
 
@@ -507,7 +529,15 @@ main() {
     kill -TERM "$BASHPID"
 }
 
-trap 'echo -e "\e[31m[FATAL] Something went wrong\e[0m" ; cleanup ; exit 1' ERR
+print_trap_err() {
+    local e='[FATAL] Oops, something went wrong!'
+    [ "$VERBOSE" != 'true' ] &&\
+        e+=' Try with --verbose'
+    echo -e "\e[31m${e}\e[0m"
+}
+
+trap 'print_trap_err ; cleanup ; exit 1' ERR
 trap 'cleanup ; exit 0' INT TERM HUP QUIT
 
 main "$@"
+
