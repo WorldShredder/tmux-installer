@@ -17,7 +17,7 @@
 
 set -Eeo pipefail
 
-readonly __VERSION__='0.3.4'
+readonly __VERSION__='0.3.5'
 readonly __TMP_SUFFIX__='.tmux-installer'
 readonly __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
@@ -29,17 +29,30 @@ __CLEANUP_TARGETS__=()
 __USER__="${SUDO_USER:-$USER}"
 __HOME__="$(sudo -u "$__USER__" bash -c 'echo $HOME')"
 
+# For Whonix, we cannot rely on $WHONIX because it is not available in root.
+# This means running installer with sudo will skip whonix-depends.
+
+if command -v whonix &>/dev/null ; then
+    readonly WHONIX=1
+else
+    readonly WHONIX=0
+fi
+
 readonly GITHUB_API_URL="https://api.github.com/repos"
 readonly NF_API_URL="${GITHUB_API_URL}/ryanoasis/nerd-fonts/releases/latest"
 readonly TMUX_API_URL="${GITHUB_API_URL}/tmux/tmux/releases"
 readonly TPM_REPO_URL='https://github.com/tmux-plugins/tpm'
-TMUX_PLUGINS_DIR="${__HOME__}/.tmux/plugins"
-TMUX_CLIPBOARD_PKG='xclip'
+
+# Accepted environment variables
+TMUX_PLUGINS_DIR="${TMUX_PLUGINS_DIR:-${__HOME__}/.tmux/plugins}"
+TMUX_CLIPBOARD_PKG="${TMUX_CLIPBOARD_PKG:-xclip}"
 INSTALL_TMUX="${INSTALL_TMUX:-true}"
 INSTALL_TPM="${INSTALL_TPM:-true}"
 PREFER_OTF="${PREFER_OTF:-false}"
-NO_INSTALL='false'
 VERBOSE="${VERBOSE:-false}"
+
+# Triggered if not installing tmux or tpm
+NO_INSTALL='false'
 
 NF_BUILD_DIR=''
 TMUX_BUILD_DIR=''
@@ -56,7 +69,9 @@ cleanup() {
 }
 
 mktemp_dir() {
-    mktemp -d --suffix "$__TMP_SUFFIX__" 2>/dev/null
+    local -n n="$1"
+    n="$(mktemp -d --suffix "$__TMP_SUFFIX__")"
+    __CLEANUP_TARGETS__+=("$n")
 }
 
 print_help() {
@@ -70,6 +85,8 @@ Options:
   -f, --fonts FONTS      A comma separated list of Nerd Fonts to install.
   -o, --otf              Install opentype fonts if available.
   -F, --fonts-only       Install fonts only.
+  -c, --config PATH      Path a tmux config to install. If PATH is a URL, the
+                         installer will curl it and expect a raw output.
   -d, --plugins-dir DIR  Specify the Tmux plugins directory path. The default
                          path is '~/.tmux/plugins'.
       --no-tpm           Do not install Tmux Plugin Manager (TPM).
@@ -88,6 +105,7 @@ Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
+  TMUX_CLIPBOARD_PKG  Same as --clipboard
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
   INSTALL_TMUX        Expects 'true' or 'false'; set by --no-tmux
   PREFER_OTF          Expects 'true' or 'false'; set by --otf
@@ -116,8 +134,8 @@ EOF
 parse_opts() {
     set -Cu
     local short_opts long_opts params
-    short_opts='r:f:oFd:u:lLVvh'
-    long_opts='tmux-release:,fonts:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,clipboard:,user:,ls,ls-fonts,verbose,version,help'
+    short_opts='r:f:oFc:d:u:lLVvh'
+    long_opts='tmux-release:,fonts:,config:,otf,fonts-only,plugins-dir:,no-tmux,no-tpm,clipboard:,user:,ls,ls-fonts,verbose,version,help'
     params="$(
         getopt -o "$short_opts" -l "$long_opts" --name "$0" -- "$@"
     )"
@@ -138,6 +156,9 @@ parse_opts() {
                 INSTALL_TMUX='false'
                 INSTALL_TPM='false'
                 shift ;;
+            -c|--config)
+                TMUX_CONFIG_PATH="$2"
+                shift 2 ;;
             -d|--plugins-dir)
                 TMUX_PLUGINS_DIR="$2"
                 shift 2 ;;
@@ -298,8 +319,7 @@ nf_install_font() {
     location="$(nf_get_location "$font_name" "$font_data")"
 
     local build_dir
-    build_dir="$(mktemp_dir)"
-    __CLEANUP_TARGETS__+=("$build_dir")
+    mktemp_dir build_dir
 
     local font_archive data_dir
     font_archive="${build_dir}/${font_name}.tar.xz"
@@ -435,8 +455,7 @@ tmux_install() {
     location="$(tmux_get_location '' "$release_data")"
 
     local build_dir
-    build_dir="$(mktemp_dir)"
-    __CLEANUP_TARGETS__+=("$build_dir")
+    mktemp_dir build_dir
 
     echo -ne "\e[34m[INFO ] Downloading Tmux \e[35m${tag_name} \e[34m... \e[0m"
     curl -sL "$location" | tar -xz -C "$build_dir" ||\
@@ -468,6 +487,7 @@ tmux_install() {
 }
 
 tmux_post_install() {
+    # See docs/todo.md: 'Patch Whonix zsh prompt for tmux'
     if [ "$WHONIX" == '1' ] && [ -f /etc/zsh/zshrc_prompt ] ; then
         echo -ne '\e[34m[INFO ] Patching Whonix prompt ... \e[0m'
         echo -e '[[ "$TERM" = tmux-* ]] &&\\\n'\
@@ -479,6 +499,12 @@ tmux_post_install() {
         }
         echo -e '\e[32mOK\e[0m'
     fi
+
+    # if [[ "$TMUX_CONFIG_PATH" =~ ^https?:// ]] ; then
+    #     :
+    # elif [[ -f "$TMUX_CONFIG_PATH" ]] ; then
+    #     :
+    # fi
 }
 
 tpm_install() {

@@ -16,8 +16,8 @@
 
 - [ ] Create pre-git `shellcheck` + `shfmt` pipeline
 - [ ] Implement better logging (maybe with `impish` module scheme)
-- [ ] Utilize `readonly` for constants
-- [ ] `mktemp_dir` should take a name reference to automate populating `__CLEANUP_TARGETS__`
+- [x] Utilize `readonly` for constants
+- [x] `mktemp_dir` should take a name reference to automate populating `__CLEANUP_TARGETS__`
     
     <details>
     <summary>Details</summary>
@@ -57,4 +57,19 @@
 
 - [ ] Installer should quit if invalid release is given, rather than download latest version.
 - [ ] `tmux_post_install` should update Whonix patch line in `.zshrc` if it exists.
+- [ ] Tmux config installer needs to check for local and remote content.
+- [ ] All common commands should be called with user `__USER__`:
+    
+    <details>
+    <summary>Details</summary>
+    
+    This will ensure smooth operation when using commands like `cp` and `mv`.
+    
+    ```bash
+    curl() { sudo -u "$__USER__" curl "$@" ; }
+    git()  { sudo -u "$__USER__" git "$@" ; }
+    # and so on...
+    ```
+    
+    </details>
 
