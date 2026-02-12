@@ -17,10 +17,11 @@
 
 set -Eeo pipefail
 
-readonly __VERSION__='0.3.5'
+readonly __VERSION__='0.4.0'
 readonly __TMP_SUFFIX__='.tmux-installer'
 readonly __FD2__="/proc/${BASHPID}/fd/2"
 __STDERR__='/dev/null'
+# __STDOUT__='/dev/null'
 __CLEANUP_TARGETS__=()
 
 # We should assume installer will be ran with `sudo` which means we need to
@@ -69,10 +70,20 @@ cleanup() {
 }
 
 mktemp_dir() {
-    local -n n="$1"
-    n="$(mktemp -d --suffix "$__TMP_SUFFIX__")"
-    __CLEANUP_TARGETS__+=("$n")
+    local -n nameref="$1"
+    local suffix="${2:-$__TMP_SUFFIX__}"
+    nameref="$(sudo -u "$__USER__" mktemp -d --suffix "$suffix")"
+    __CLEANUP_TARGETS__+=("$nameref")
 }
+
+# TODO: Implement FIFO logging
+# mktemp_fifo() {
+#     local -n nameref="$1"
+#     local suffix="${2:-$__TMP_SUFFIX__}"
+#     nameref="$(sudo -u "$__USER__" mktemp -u --suffix "$suffix")"
+#     sudo -u "$__USER__" mkfifo "$nameref"
+#     __CLEANUP_TARGETS__+=("$nameref")
+# }
 
 print_help() {
 cat << EOF
@@ -85,16 +96,16 @@ Options:
   -f, --fonts FONTS      A comma separated list of Nerd Fonts to install.
   -o, --otf              Install opentype fonts if available.
   -F, --fonts-only       Install fonts only.
-  -c, --config PATH      Path a tmux config to install. If PATH is a URL, the
-                         installer will curl it and expect a raw output.
+  -c, --config PATH      Path to a tmux config. If PATH is a URL, the installer
+                         will curl it and expect a raw output.
   -d, --plugins-dir DIR  Specify the Tmux plugins directory path. The default
                          path is '~/.tmux/plugins'.
       --no-tpm           Do not install Tmux Plugin Manager (TPM).
       --no-tmux          Do not install Tmux.
       --clipboard PKG    Specify a clipboard package to install for Tmux.
                          Default is 'xclip'.
-  -u, --user USER        User to install Tmux plugins on. Overrides \$SUDO_USER
-                         and \$USER. See notes for more info.
+  -u, --user USER        User to install Tmux plugins and config on. Overrides
+                         \$SUDO_USER and \$USER. See notes for more info.
   -l, --ls               List available versions and release dates.
   -L, --ls-fonts         List available Nerd Fonts.
   -V, --verbose          Enable verbose apt/git/make/install
@@ -104,6 +115,7 @@ Options:
 Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
+  TMUX_CONFIG_PATH    Same as -c|--config
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   TMUX_CLIPBOARD_PKG  Same as --clipboard
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
@@ -280,7 +292,7 @@ check_depends() {
 
 nf_get_fonts() {
     local query='.assets | .[] | {name: .name, location: .browser_download_url}'
-    jq "$query" <(curl -sL "$NF_API_URL") 2>/dev/null
+    jq "$query" <(curl -fsL "$NF_API_URL") 2>/dev/null
 }
 
 nf_list_fonts() {
@@ -302,6 +314,20 @@ nf_get_location() {
         grep -oE '^https://github\.com/ryanoasis/nerd-fonts/.+'
 }
 
+nf_extract_font() {
+    local src="$1"
+    local dest="$2"
+    local order="${3:-ttf otf}"
+
+    for ftype in $order ; do
+        user_tar -xJf "$src" -C "$dest" --wildcards "*.$ftype" &>"$__STDERR__" ||\
+            continue
+        printf "$ftype"
+        return
+    done
+    return 1
+}
+
 nf_install_font() {
     local font_name="$1"
     local font_data="$2"
@@ -321,36 +347,43 @@ nf_install_font() {
     local build_dir
     mktemp_dir build_dir
 
-    local font_archive data_dir
-    font_archive="${build_dir}/${font_name}.tar.xz"
-    data_dir="${build_dir}/font_data"
-    mkdir "$data_dir"
+    local system_fonts='/usr/share/fonts'
+    local font_archive="${build_dir}/${font_name}.tar.xz"
+    local data_dir="${build_dir}/font_data"
+    user_mkdir "$data_dir"
+
+    local preference='ttf otf'
+    [ "$PREFER_OTF" == 'true' ] &&\
+        preference='otf ttf'
 
     echo -ne "\e[34m[INFO ] Downloading font \e[35m${font_name} \e[34m ... \e[0m"
-    curl -sL "$location" > "$font_archive" ||\
+    user_curl -fsSL "$location" -o "$font_archive" &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
     }
     echo -e '\e[32mOK\e[0m'
 
-    echo -ne "\e[34m[INFO ] Installing font \e[35m${font_name} \e[34m... \e[0m"
-    if [ "$PREFER_OTF" == 'true' ] \
-    && tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.otf' 2>/dev/null ; then
-        sudo mkdir -p "/usr/share/fonts/opentype/$font_name" &&\
-        sudo cp "$data_dir"/*.otf "/usr/share/fonts/opentype/$font_name/" ||\
-        {
-            echo -e '\e[31mFAIL\e[0m'
-            return 1
-        }
-    elif tar -xJf "$font_archive" -C "$data_dir" --wildcards '*.ttf' 2>/dev/null ; then
-        sudo mkdir -p "/usr/share/fonts/truetype/$font_name" &&\
-        sudo cp "$data_dir"/*.ttf "/usr/share/fonts/truetype/$font_name/" ||\
-        {
-            echo -e '\e[31mFAIL\e[0m' 
-            return 1
-        }
-    fi
+    echo -ne "\e[34m[INFO ] Extracting font \e[35m${font_name} \e[34m... \e[0m"
+    local font_type
+    font_type="$(nf_extract_font "$font_archive" "$data_dir" "$preference")" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+
+    echo -ne "\e[34m[INFO ] Installing font \e[35m${font_name}"\
+        "(${font_type^^}) \e[34m... \e[0m"
+    local install_path="${system_fonts}/truetype/${font_name}"
+    [ "$font_type" == 'otf' ] &&\
+        install_path="${system_fonts}/opentype/${font_name}"
+    sudo mkdir -p "$install_path" 2>"$__STDERR__" &&\
+    sudo cp "$data_dir"/*."$font_type" "$install_path" 2>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
     echo -e '\e[32mOK\e[0m'
 }
 
@@ -374,12 +407,12 @@ nf_install_fonts() {
 tmux_get_release() {
     local release="$1"
     if [ -z "$release" ] || [ "$release" == 'all' ] ; then
-        curl -sL "$TMUX_API_URL"
+        curl -fsL "$TMUX_API_URL"
     elif [ "$release" == 'latest' ] ; then
-        curl -sL "${TMUX_API_URL}/latest"
+        curl -fsL "${TMUX_API_URL}/latest"
     else
         local query=".[] | select(.tag_name == \"${release}\")"
-        curl -sL "${TMUX_API_URL}" | jq "$query" 2>/dev/null
+        curl -fsL "${TMUX_API_URL}" | jq "$query" 2>/dev/null
     fi
 }
 
@@ -442,7 +475,7 @@ tmux_install() {
     local release_data="$1"
     if [ -z "$release_data" ] ; then
         echo -ne "\e[34m[INFO ] Fetching Tmux \e[35m${TMUX_RELEASE} \e[34mmetadata ... "
-        release_data="$(tmux_get_release "$TMUX_RELEASE")" ||\
+        release_data="$(tmux_get_release "$TMUX_RELEASE")" && [ -n "$release_data" ] ||\
         {
             echo -e '\e[31mFAIL\e[0m'
             return 1
@@ -458,7 +491,7 @@ tmux_install() {
     mktemp_dir build_dir
 
     echo -ne "\e[34m[INFO ] Downloading Tmux \e[35m${tag_name} \e[34m... \e[0m"
-    curl -sL "$location" | tar -xz -C "$build_dir" ||\
+    user_curl -fsSL "$location" | user_tar -xz -C "$build_dir" &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
@@ -467,8 +500,8 @@ tmux_install() {
     cd "$build_dir"/tmux-*
 
     echo -ne "\e[34m[INFO ] Building Tmux from source ... \e[0m"
-    ./configure &>"$__STDERR__" &&\
-    make &>"$__STDERR__" ||\
+    sudo -u "$__USER__" ./configure &>"$__STDERR__" &&\
+    user_make &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
@@ -486,25 +519,62 @@ tmux_install() {
     tmux_verify_install "$release_data" "$tag_name"
 }
 
-tmux_post_install() {
-    # See docs/todo.md: 'Patch Whonix zsh prompt for tmux'
-    if [ "$WHONIX" == '1' ] && [ -f /etc/zsh/zshrc_prompt ] ; then
-        echo -ne '\e[34m[INFO ] Patching Whonix prompt ... \e[0m'
-        echo -e '[[ "$TERM" = tmux-* ]] &&\\\n'\
-            '    TERM="xterm-256color" source /etc/zsh/zshrc_prompt' |\
-            sudo -u "$__USER__" tee -a "$__HOME__"/.zshrc &>/dev/null ||\
+tmux_install_config() {
+    local config_path="$1"
+    local build_dir
+    mktemp_dir build_dir
+    if [[ "$config_path" =~ ^https?://.*\.git ]] ; then
+        echo -ne '\e[34m[INFO ] Cloning Tmux config ... \e[0m'
+        user_clone "$config_path" "$build_dir" &>"$__STDERR__" ||\
         {
             echo -e '\e[31mFAIL\e[0m'
             return 1
         }
         echo -e '\e[32mOK\e[0m'
+        config_path="${build_dir}/.tmux.conf"
+    elif [[ "$config_path" =~ ^https?:// ]] ; then
+        echo -ne '\e[34m[INFO ] Downloading Tmux config ... \e[0m'
+        user_curl -fsSL "$config_path" -o "$build_dir"/.tmux.conf &>"$__STDERR__" ||\
+        {
+            echo -e '\e[31mFAIL\e[0m'
+            return 1
+        }
+        echo -e '\e[32mOK\e[0m'
+        config_path="${build_dir}/.tmux.conf"
+    fi
+    echo -ne '\e[34m[INFO ] Installing Tmux config ... \e[0m'
+    user_cp -b "$config_path" "$__HOME__"/.tmux.conf &>"$__STDERR__" ||\
+    {
+        echo -e '\e[31mFAIL\e[0m'
+        return 1
+    }
+    echo -e '\e[32mOK\e[0m'
+}
+
+tmux_post_install() {
+    # See docs/todo.md: 'Patch Whonix zsh prompt for tmux'
+    if [ "$WHONIX" == '1' ] && [ -f /etc/zsh/zshrc_prompt ] ; then
+        echo -ne '\e[34m[INFO ] Patching Whonix prompt ... \e[0m'
+        local patch_line='# tmux-installer_whonix-patch\n'
+        patch_line+='[[ "$TERM" = tmux-* ]] &&\\\n'
+        patch_line+='    TERM="xterm-256color" source /etc/zsh/zshrc_prompt'
+        
+        if grep -F "$(echo -e "$patch_line")" "$__HOME__"/.zshrc &>/dev/null ; then
+            echo -e '\e[32mSKIP\e[0m'
+        else
+            echo -e "$patch_line" | user_tee -a "$__HOME__"/.zshrc &>/dev/null ||\
+            {
+                echo -e '\e[31mFAIL\e[0m'
+                return 1
+            }
+            echo -e '\e[32mOK\e[0m'
+        fi
     fi
 
-    # if [[ "$TMUX_CONFIG_PATH" =~ ^https?:// ]] ; then
-    #     :
-    # elif [[ -f "$TMUX_CONFIG_PATH" ]] ; then
-    #     :
-    # fi
+    [ -n "$TMUX_CONFIG_PATH" ] &&\
+        tmux_install_config "$TMUX_CONFIG_PATH"
+
+    return 0
 }
 
 tpm_install() {
@@ -514,8 +584,7 @@ tpm_install() {
     else
         echo -ne '\e[34m[INFO ] Installing TPM ... \e[0m'
     fi
-    sudo -u "$__USER__" git clone \
-        "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
+    user_clone "$TPM_REPO_URL" "${TMUX_PLUGINS_DIR}/tpm" &>"$__STDERR__" ||\
     {
         echo -e '\e[31mFAIL\e[0m'
         return 1
@@ -544,6 +613,38 @@ pre_install() {
     [ "$VERBOSE" == 'true' ] &&\
         __STDERR__="$__FD2__"
     check_depends
+
+    run_user_command() {
+        local command_name="$1" ; shift
+        local command_path
+        command_path="$(sudo -u "$__USER__" bash -c "command -v '$command_name'" )"
+        [ -n "$command_path" ] &&\
+            sudo -u "$__USER__" "$command_path" "$@"
+    }
+    user_mkdir() {
+        run_user_command 'mkdir' "$@"
+    }
+    user_cp() {
+        run_user_command 'cp' "$@"
+    }
+    user_tee() {
+        run_user_command 'tee' "$@"
+    }
+    user_curl() {
+        run_user_command 'curl' "$@"
+    }
+    user_tar() {
+        run_user_command 'tar' "$@"
+    }
+    user_git() {
+        run_user_command 'git' "$@"
+    }
+    user_clone() {
+        user_git clone --depth 1 "$@"
+    }
+    user_make() {
+        run_user_command 'make' "$@"
+    }
 }
 
 main() {

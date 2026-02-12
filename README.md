@@ -36,14 +36,16 @@ Options:
   -f, --fonts FONTS      A comma separated list of Nerd Fonts to install.
   -o, --otf              Install opentype fonts if available.
   -F, --fonts-only       Install fonts only.
+  -c, --config PATH      Path to a tmux config. If PATH is a URL, the installer
+                         will curl it and expect a raw output.
   -d, --plugins-dir DIR  Specify the Tmux plugins directory path. The default
                          path is '~/.tmux/plugins'.
       --no-tpm           Do not install Tmux Plugin Manager (TPM).
       --no-tmux          Do not install Tmux.
       --clipboard PKG    Specify a clipboard package to install for Tmux.
                          Default is 'xclip'.
-  -u, --user USER        User to install Tmux plugins on. Overrides \$SUDO_USER
-                         and \$USER. See notes for more info.
+  -u, --user USER        User to install Tmux plugins and config on. Overrides
+                         \$SUDO_USER and \$USER. See notes for more info.
   -l, --ls               List available versions and release dates.
   -L, --ls-fonts         List available Nerd Fonts.
   -V, --verbose          Enable verbose apt/git/make/install
@@ -53,6 +55,7 @@ Options:
 Environment:
   TMUX_RELEASE        Same as -r|--release
   INSTALL_FONTS       Same as -f|--fonts
+  TMUX_CONFIG_PATH    Same as -c|--config
   TMUX_PLUGINS_DIR    Same as -d|--plugins-dir
   TMUX_CLIPBOARD_PKG  Same as --clipboard
   INSTALL_TPM         Expects 'true' or 'false'; set by --no-tpm
@@ -72,10 +75,11 @@ Environment:
     sudo src/install.sh
     ```
 
-- #### Install Tmux release `3.6` with `JetbrainsMono` font
+- #### Install Tmux release `3.6` with `JetbrainsMono` font and URL config
 
     ```bash
-    sudo src/install.sh -r 3.6 -f jetbrainsmono
+    sudo src/install.sh -r 3.6 -f jetbrainsmono \
+        --config https://github.com/worldshredder/tmux-config.git
     ```
 
 - #### Install fonts only (no Tmux)
